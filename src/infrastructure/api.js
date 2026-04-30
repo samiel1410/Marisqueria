@@ -1,17 +1,8 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  const { protocol, hostname, port } = window.location;
-  
-  // Si estamos en desarrollo local (Vite suele usar 5173, 5174, etc.)
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    // Laragon normalmente corre en el puerto 80. Si el puerto actual es de Vite, lo forzamos al de Laragon.
-    const apiPort = (port === '5173' || port === '5174' || port === '5175') ? '' : (port ? ':' + port : '');
-    return `${protocol}//${hostname}${apiPort}/marisqueria/web/api/public`;
-  }
-  
-  // En producción, asumimos que la API está en la misma raíz o subcarpeta /api/public
-  return `${protocol}//${hostname}${port ? ':' + port : ''}/api/public`;
+  // Vite selecciona automáticamente el valor de .env o .env.production según el comando (npm run dev vs npm run build)
+  return import.meta.env.VITE_API_URL || '/api/public';
 };
 
 export const BASE_URL = getBaseUrl();
