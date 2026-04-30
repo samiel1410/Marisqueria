@@ -27,8 +27,15 @@ class AuthController {
         $stmt->execute([$data['username']]);
         $user = $stmt->fetch();
 
-        if ($user && password_verify($data['password'], $user['password'])) {
-            $key = $_ENV['JWT_SECRET'] ?? 'default_secret';
+        if (!$user) {
+            http_response_code(401);
+            $dbName = getenv('DB_NAME') ?: ($_ENV['DB_NAME'] ?? 'unknown');
+            echo json_encode(['error' => "Usuario '{$data['username']}' no encontrado en la base de datos '$dbName'"]);
+            return;
+        }
+
+        if (password_verify($data['password'], $user['password'])) {
+            $key = $_ENV['JWT_SECRET'] ?? getenv('JWT_SECRET') ?? 'default_secret';
             $payload = [
                 'iss' => 'marisqueria-pos',
                 'aud' => 'marisqueria-users',
@@ -56,7 +63,8 @@ class AuthController {
             ]);
         } else {
             http_response_code(401);
-            echo json_encode(['error' => 'Invalid credentials']);
+            $hashHint = substr($user['password'], 0, 10) . '...';
+            echo json_encode(['error' => "Contraseña incorrecta. El hash guardado empieza por: $hashHint"]);
         }
     }
 }
