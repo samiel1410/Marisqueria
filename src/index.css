@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@config "../tailwind.config.js";
+
+@layer base {
+  * {
+    @apply border-primary-200;
+  }
+  
+  body {
+    @apply bg-primary-50 text-primary-700 font-sans antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display text-primary-900 font-bold tracking-tight;
+  }
+}
+
+@layer components {
+  /* Glassmorphism utility - Premium */
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/50 shadow-glass;
+  }
+  
+  .glass-dark {
+    @apply bg-primary-900/80 backdrop-blur-xl border border-white/10 text-white;
+  }
+
+  /* Premium Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl font-semibold transition-all duration-300 gap-2 border-none cursor-pointer;
+  }
+
+  .btn-primary {
+    @apply bg-primary-900 text-white hover:bg-primary-800 hover:-translate-y-0.5 hover:shadow-brand;
+  }
+
+  .btn-brand {
+    @apply bg-brand text-white hover:bg-brand-dark hover:-translate-y-0.5 hover:shadow-brand;
+  }
+  
+  .btn-outline {
+    @apply bg-transparent border-2 border-primary-200 text-primary-700 hover:border-brand hover:text-brand;
+  }
+  
+  .btn-ghost {
+    @apply bg-transparent text-primary-600 hover:bg-primary-100 hover:text-primary-900;
+  }
+
+  /* Form elements */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl bg-white border-2 border-primary-200 
+           text-primary-900 placeholder-primary-400
+           outline-none transition-all duration-300
+           focus:border-brand focus:ring-4 focus:ring-brand/10;
+  }
+  
+  .input-error {
+    @apply border-danger focus:border-danger focus:ring-danger/10;
+  }
+  
+  .label {
+    @apply block mb-2 text-sm font-semibold text-primary-700;
+  }
+  
+  /* Card variations */
+  .card {
+    @apply bg-white rounded-3xl p-6 shadow-soft border border-primary-200/50;
+  }
+  
+  .card-hover {
+    @apply hover:shadow-glass transition-all duration-300 hover:-translate-y-1;
+  }
+  
+  /* Scrollbar styling */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 20px;
+  }
+}
+
+@layer utilities {
+  /* Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
+  .animate-fade-in-up {
+    animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
+  .animate-slide-in-right {
+    animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
+  /* Stagger animation delays */
+  .animate-delay-100 { animation-delay: 100ms; }
+  .animate-delay-200 { animation-delay: 200ms; }
+  .animate-delay-300 { animation-delay: 300ms; }
+  .animate-delay-400 { animation-delay: 400ms; }
+  .animate-delay-500 { animation-delay: 500ms; }
+  
+  /* Gradient backgrounds */
+  .bg-gradient-radial {
+    background: radial-gradient(circle at center, var(--tw-gradient-stops));
+  }
+  
+  /* Text utilities */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand to-brand-dark;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0; 
+    transform: scale(0.95); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+}
+
+@keyframes slideInRight {
+  from { 
+    opacity: 0; 
+    transform: translateX(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateX(0); 
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}

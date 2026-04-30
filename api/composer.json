@@ -1,0 +1,18 @@
+{
+    "name": "marisqueria/api",
+    "description": "Backend for Marisqueria POS",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "require": {
+        "firebase/php-jwt": "^6.0",
+        "vlucas/phpdotenv": "^5.0",
+        "google/auth": "^1.50",
+        "dompdf/dompdf": "^3.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    }
+}

@@ -1,0 +1,706 @@
+<?php
+
+namespace App\Infrastructure\Http;
+
+use App\Infrastructure\Persistence\Database;
+use App\Infrastructure\Services\NotificationService;
+use PDO;
+use Exception;
+
+class OrderController {
+    
+    public function store(): void {
+        $user = AuthMiddleware::handle(); // Protect route
+        
+        $data = json_decode(file_get_contents('php://input'), true);
+        
+        if (!array_key_exists('table_id', $data) || empty($data['items']) || !is_array($data['items'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'table_id and items array are required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        
+        // Check if there is an open cash session
+        $stmtSession = $db->query("SELECT id FROM cash_sessions WHERE status = 'open' LIMIT 1");
+        if (!$stmtSession->fetch()) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Debe abrir una caja antes de poder registrar pedidos.']);
+            return;
+        }
+        
+        try {
+            $db->beginTransaction();
+            
+            // Check for existing active order if table_id is provided
+            $existingOrder = null;
+            if ($data['table_id'] !== null) {
+                $stmtExist = $db->prepare("SELECT id, total, user_id FROM orders WHERE table_id = ? AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1");
+                $stmtExist->execute([$data['table_id']]);
+                $existingOrder = $stmtExist->fetch(PDO::FETCH_ASSOC);
+            }
+
+            // Calculate new items total
+            $newItemsTotal = 0;
+            foreach ($data['items'] as $item) {
+                $stmt = $db->prepare("SELECT price FROM products WHERE id = ?");
+                $stmt->execute([$item['product_id']]);
+                $product = $stmt->fetch();
+                if ($product) {
+                    $newItemsTotal += $product['price'] * $item['quantity'];
+                } else {
+                    throw new Exception("Product ID {$item['product_id']} not found");
+                }
+            }
+
+            if ($existingOrder) {
+                if ($existingOrder['user_id'] != $user->id) {
+                    http_response_code(403);
+                    echo json_encode(['error' => 'La mesa ya está siendo atendida por otro mesero.']);
+                    return;
+                }
+
+                $orderId = $existingOrder['id'];
+                // Update total
+                $newTotal = $existingOrder['total'] + $newItemsTotal;
+                $db->prepare("UPDATE orders SET total = ? WHERE id = ?")->execute([$newTotal, $orderId]);
+            } else {
+                // Create Order
+                $stmt = $db->prepare("INSERT INTO orders (table_id, user_id, total, status) VALUES (?, ?, ?, 'pendiente')");
+                $stmt->execute([$data['table_id'], $user->id, $newItemsTotal]);
+                $orderId = $db->lastInsertId();
+            }
+
+            // Insert Items
+            $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
+            foreach ($data['items'] as $item) {
+                 $stmtPrice = $db->prepare("SELECT price FROM products WHERE id = ?");
+                 $stmtPrice->execute([$item['product_id']]);
+                 $price = $stmtPrice->fetchColumn();
+                 
+                 $notes = $item['notes'] ?? null;
+                 $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $notes]);
+            }
+            
+            // Update Table Status
+            if ($data['table_id'] !== null) {
+                $stmtTable = $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?");
+                $stmtTable->execute([$data['table_id']]);
+            }
+
+            $db->commit();
+
+            // Send notification to Web App (topic: new_orders)
+            $notifTitle = $existingOrder ? 'Orden Actualizada' : 'Nueva Orden';
+            $notifBody = $existingOrder 
+                ? 'Se han añadido productos a la Mesa ' . ($data['table_id'] ?? '??')
+                : 'Se ha recibido un nuevo pedido para la Mesa ' . ($data['table_id'] ?? '??');
+
+            NotificationService::sendToTopic(
+                'new_orders', 
+                $notifTitle, 
+                $notifBody, 
+                ['order_id' => (string)$orderId, 'table_id' => (string)$data['table_id']]
+            );
+            
+            http_response_code(201);
+            echo json_encode(['message' => $existingOrder ? 'Order updated' : 'Order created', 'order_id' => $orderId]);
+            
+        } catch (Exception $e) {
+            $db->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to process order', 'details' => $e->getMessage()]);
+        }
+    }
+    
+    public function index(): void {
+        AuthMiddleware::handle();
+        $db = Database::getConnection();
+        
+        $userId = $_GET['user_id'] ?? null;
+        
+        $sql = "
+            SELECT o.*, t.number as table_number, u.username as waiter_name,
+                   (SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = o.id) as total_paid,
+                   (SELECT cr.name 
+                    FROM cash_sessions cs 
+                    JOIN cash_registers cr ON cs.register_id = cr.id 
+                    WHERE o.created_at >= cs.opened_at 
+                      AND (cs.closed_at IS NULL OR o.created_at <= cs.closed_at)
+                    LIMIT 1) as register_name
+            FROM orders o
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            LEFT JOIN users u ON o.user_id = u.id
+        ";
+        $params = [];
+        
+        if ($userId) {
+            $sql .= " WHERE o.user_id = ?";
+            $params[] = $userId;
+        }
+        
+        $sql .= " ORDER BY o.created_at DESC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+    
+    public function getActiveOrders(): void {
+        AuthMiddleware::handle();
+        
+        $db = Database::getConnection();
+        $stmt = $db->query("
+            SELECT o.*, t.number as table_number, u.username as waiter_name,
+                   (SELECT cr.name 
+                    FROM cash_sessions cs 
+                    JOIN cash_registers cr ON cs.register_id = cr.id 
+                    WHERE o.created_at >= cs.opened_at 
+                      AND (cs.closed_at IS NULL OR o.created_at <= cs.closed_at)
+                    LIMIT 1) as register_name
+            FROM orders o
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            LEFT JOIN users u ON o.user_id = u.id
+            WHERE (o.status != 'cobrado' AND o.status != 'cancelado') 
+               OR (o.table_id IS NULL AND o.status NOT IN ('entregado', 'cancelado'))
+            ORDER BY o.created_at DESC
+        ");
+        
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    public function getByTable(): void {
+        AuthMiddleware::handle();
+        $tableId = $_GET['table_id'] ?? null;
+        
+        if (!$tableId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'table_id is required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        
+        // Find active order for this table
+        $stmt = $db->prepare("
+            SELECT id, total, status, created_at 
+            FROM orders 
+            WHERE table_id = ? AND status != 'cobrado' 
+            ORDER BY created_at DESC LIMIT 1
+        ");
+        $stmt->execute([$tableId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order) {
+            echo json_encode(['order' => null]);
+            return;
+        }
+
+        // Get items
+        $stmtItems = $db->prepare("
+            SELECT oi.*, p.name as product_name
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.id
+            WHERE oi.order_id = ?
+        ");
+        $stmtItems->execute([$order['id']]);
+        $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(['order' => $order]);
+    }
+
+    public function getDetails(): void {
+        AuthMiddleware::handle();
+        $orderId = $_GET['order_id'] ?? null;
+        if (!$orderId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id is required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare("
+            SELECT o.*, 
+                   t.number as table_number, 
+                   u.username as waiter_name,
+                   c.name as customer_name,
+                   c.identification as customer_id_number,
+                   b.bank_name,
+                   b.account_number,
+                   b.owner_name
+            FROM orders o
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            LEFT JOIN users u ON o.user_id = u.id
+            LEFT JOIN customers c ON o.customer_id = c.id
+            LEFT JOIN bank_accounts b ON o.bank_account_id = b.id
+            WHERE o.id = ?
+        ");
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Order not found']);
+            return;
+        }
+
+        // Obtener historial de pagos
+        $stmtPayments = $db->prepare("
+            SELECT p.*, b.bank_name, b.account_number 
+            FROM order_payments p
+            LEFT JOIN bank_accounts b ON p.bank_account_id = b.id
+            WHERE p.order_id = ?
+            ORDER BY p.created_at ASC
+        ");
+        $stmtPayments->execute([$orderId]);
+        $order['payments'] = $stmtPayments->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode($order);
+    }
+
+    public function updateStatus(): void {
+        $user = AuthMiddleware::handle();
+        
+        $contentType = isset($_SERVER["CONTENT_TYPE"]) ? trim($_SERVER["CONTENT_TYPE"]) : '';
+        if (strpos($contentType, 'application/json') !== false) {
+            $data = json_decode(file_get_contents('php://input'), true);
+        } else {
+            $data = $_POST;
+        }
+        
+        if (empty($data['order_id']) || empty($data['status'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id and status are required']);
+            return;
+        }
+
+        $receiptPath = null;
+        if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = __DIR__ . '/../../../public/uploads/receipts/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+            $ext = pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION);
+            $fileName = 'receipt_' . $data['order_id'] . '_' . time() . '.' . $ext;
+            $destination = $uploadDir . $fileName;
+            
+            if (move_uploaded_file($_FILES['receipt']['tmp_name'], $destination)) {
+                $receiptPath = 'uploads/receipts/' . $fileName;
+            }
+        }
+
+        $db = Database::getConnection();
+        
+        try {
+            $db->beginTransaction();
+
+            $stmt = $db->prepare("SELECT * FROM orders WHERE id = ?");
+            $stmt->execute([$data['order_id']]);
+            $orderDataFull = $stmt->fetch(PDO::FETCH_ASSOC);
+            $currentStatus = $orderDataFull['status'];
+
+            if (!$currentStatus) {
+                throw new Exception("Order not found");
+            }
+
+            // --- Lógica de Anulación de Cobro ---
+            if ($currentStatus === 'cobrado' && $data['status'] !== 'cobrado') {
+                $db->prepare("DELETE FROM order_payments WHERE order_id = ?")->execute([$data['order_id']]);
+                $db->prepare("UPDATE orders SET 
+                    payment_method = NULL, 
+                    cash_amount = NULL, 
+                    transfer_amount = NULL, 
+                    bank_account_id = NULL,
+                    receipt_image = NULL
+                    WHERE id = ?")
+                   ->execute([$data['order_id']]);
+            }
+
+            // If moving TO 'en cocina' from 'pendiente', discount stock
+            if ($currentStatus === 'pendiente' && $data['status'] === 'en cocina') {
+                $stmtItems = $db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
+                $stmtItems->execute([$data['order_id']]);
+                $items = $stmtItems->fetchAll();
+
+                foreach ($items as $item) {
+                    $stmtUpdateStock = $db->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND manages_inventory = 1");
+                    $stmtUpdateStock->execute([$item['quantity'], $item['product_id']]);
+                }
+
+                // Notificar al mesero que su orden empezó a prepararse
+                $stmtWaiter = $db->prepare("SELECT user_id, table_id FROM orders WHERE id = ?");
+                $stmtWaiter->execute([$data['order_id']]);
+                $orderData = $stmtWaiter->fetch();
+                
+                if ($orderData && $orderData['user_id']) {
+                    $stmtTableNum = $db->prepare("SELECT number FROM restaurant_tables WHERE id = ?");
+                    $stmtTableNum->execute([$orderData['table_id']]);
+                    $tableNum = $stmtTableNum->fetchColumn();
+
+                    NotificationService::sendToTopic(
+                        'waiter_' . $orderData['user_id'],
+                        'Preparando Orden',
+                        "El pedido de Mesa " . ($tableNum ?? '??') . " está en la cocina",
+                        ['order_id' => (string)$data['order_id'], 'type' => 'order_ready']
+                    );
+                }
+            }
+
+            // If 'cancelado', revert stock if it was already deducted
+            if ($data['status'] === 'cancelado' && in_array($currentStatus, ['en cocina', 'entregado'])) {
+                $stmtItems = $db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
+                $stmtItems->execute([$data['order_id']]);
+                $items = $stmtItems->fetchAll();
+                foreach ($items as $item) {
+                    $stmtUpdateStock = $db->prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND manages_inventory = 1");
+                    $stmtUpdateStock->execute([$item['quantity'], $item['product_id']]);
+                }
+            }
+
+            // Update status and payments
+            $newStatus = $data['status'];
+            if ($newStatus === 'cobrado') {
+                $paymentMethod = $data['payment_method'] ?? 'efectivo';
+                $bankId = $data['bank_account_id'] ?? null;
+                $cashAmount = (float)($data['cash_amount'] ?? 0);
+                $transferAmount = (float)($data['transfer_amount'] ?? 0);
+                $customerId = $data['customer_id'] ?? null;
+                $amountPaidThisTime = (float)($data['amount'] ?? 0);
+
+                // Registrar pagos en la nueva tabla
+                if ($paymentMethod === 'mixto') {
+                    if ($cashAmount > 0) {
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
+                           ->execute([$data['order_id'], $cashAmount, $user->id]);
+                    }
+                    if ($transferAmount > 0) {
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, user_id) VALUES (?, ?, 'transferencia', ?, ?)")
+                           ->execute([$data['order_id'], $transferAmount, $bankId, $user->id]);
+                    }
+                } else {
+                    $amount = $amountPaidThisTime > 0 ? $amountPaidThisTime : (float)$orderDataFull['total'];
+                    if ($paymentMethod === 'efectivo') {
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
+                           ->execute([$data['order_id'], $amount, $user->id]);
+                    } else {
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, user_id) VALUES (?, ?, 'transferencia', ?, ?)")
+                           ->execute([$data['order_id'], $amount, $bankId, $user->id]);
+                    }
+                }
+
+                // Calcular total pagado acumulado
+                $stmtSum = $db->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = ?");
+                $stmtSum->execute([$data['order_id']]);
+                $totalPaid = (float)$stmtSum->fetchColumn();
+
+                $orderTotal = (float)$orderDataFull['total'];
+                if ($totalPaid < $orderTotal - 0.01) {
+                    $newStatus = 'parcial';
+                } else {
+                    $newStatus = 'cobrado';
+                }
+
+                // Actualizar orden con el nuevo estado y campos de referencia (opcional)
+                $db->prepare("UPDATE orders SET status = ?, payment_method = ?, customer_id = ?, bank_account_id = ?, cash_amount = ?, transfer_amount = ? WHERE id = ?")
+                   ->execute([$newStatus, $paymentMethod, $customerId, $bankId, $cashAmount, $transferAmount, $data['order_id']]);
+            } else {
+                $db->prepare("UPDATE orders SET status = ? WHERE id = ?")->execute([$newStatus, $data['order_id']]);
+            }
+
+            // Liberar mesa solo si se cobró totalmente o se canceló
+            if (($newStatus === 'cobrado' || $newStatus === 'cancelado') && $orderDataFull['table_id']) {
+                $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$orderDataFull['table_id']]);
+                
+                // Notificaciones de mesa libre
+                NotificationService::sendToTopic('new_orders', 'Mesa Liberada', "La mesa asociada a la orden #{$data['order_id']} ahora está disponible.", ['order_id' => (string)$data['order_id'], 'table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
+                NotificationService::sendToTopic('table_updates', 'Mesa Disponible', "Mesa disponible", ['table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
+                
+                if ($newStatus === 'cobrado') {
+                    NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string)$data['order_id'], 'type' => 'print_request']);
+                }
+            }
+
+            // ... (rest of updateStatus logic)
+            // If 'entregado', notify the waiter
+            if ($data['status'] === 'entregado') {
+                $stmtWaiter = $db->prepare("SELECT user_id, table_id FROM orders WHERE id = ?");
+                $stmtWaiter->execute([$data['order_id']]);
+                $orderData = $stmtWaiter->fetch();
+                
+                if ($orderData && $orderData['user_id']) {
+                    $stmtTableNum = $db->prepare("SELECT number FROM restaurant_tables WHERE id = ?");
+                    $stmtTableNum->execute([$orderData['table_id']]);
+                    $tableNum = $stmtTableNum->fetchColumn();
+
+                    NotificationService::sendToTopic(
+                        'waiter_' . $orderData['user_id'],
+                        'Orden lista',
+                        "Llevar a Mesa " . ($tableNum ?? '??'),
+                        ['order_id' => (string)$data['order_id'], 'type' => 'order_ready']
+                    );
+                }
+            }
+
+            $db->commit();
+            echo json_encode(['message' => 'Order status updated successfully']);
+            
+        } catch (Exception $e) {
+            $db->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
+        }
+    }
+
+    public function getPrintData(): void {
+        AuthMiddleware::handle();
+        $orderId = $_GET['order_id'] ?? null;
+        
+        if (!$orderId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        
+        $stmt = $db->prepare("
+            SELECT o.*, t.number as table_number, u.username as waiter_name,
+                   c.name as customer_name, c.identification as customer_id_number, c.email as customer_email, c.phone as customer_phone
+            FROM orders o
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            LEFT JOIN users u ON o.user_id = u.id
+            LEFT JOIN customers c ON o.customer_id = c.id
+            WHERE o.id = ?
+        ");
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Order not found']);
+            return;
+        }
+
+        // Get items
+        $stmtItems = $db->prepare("
+            SELECT oi.*, p.name as product_name
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.id
+            WHERE oi.order_id = ?
+        ");
+        $stmtItems->execute([$orderId]);
+        $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+
+        // Get payments
+        $stmtPayments = $db->prepare("
+            SELECT op.amount, op.payment_method, b.bank_name 
+            FROM order_payments op
+            LEFT JOIN bank_accounts b ON op.bank_account_id = b.id
+            WHERE op.order_id = ?
+        ");
+        $stmtPayments->execute([$orderId]);
+        $order['payments'] = $stmtPayments->fetchAll(PDO::FETCH_ASSOC);
+
+        if (isset($_GET['download']) && $_GET['download'] == 1) {
+            $paymentMethodLabel = ucfirst($order['payment_method'] ?? 'Pendiente');
+            
+            $html = "
+            <html>
+            <head>
+                <style>
+                    @page { margin: 0; }
+                    * { box-sizing: border-box; }
+                    body { 
+                        font-family: 'Courier New', Courier, monospace; 
+                        font-size: 11px; 
+                        color: #000; 
+                        margin: 0 auto; 
+                        width: 90%; 
+                        padding: 0 5%; 
+                    }
+                    .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+                    .header h2 { margin: 0; font-size: 16px; font-weight: bold; }
+                    .header p { margin: 2px 0; font-size: 11px; }
+                    .info { margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+                    .info p { margin: 2px 0; }
+                    .table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                    .table th { border-bottom: 1px dashed #000; padding: 4px 0; text-align: left; font-size: 11px; }
+                    .table td { padding: 4px 0; text-align: left; vertical-align: top; font-size: 11px; }
+                    .text-right { text-align: right; }
+                    .text-center { text-align: center; }
+                    .total-row { border-top: 1px dashed #000; font-weight: bold; font-size: 14px; }
+                    .total-row td { padding-top: 10px; }
+                    .footer { text-align: center; margin-top: 20px; font-size: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class='header'>
+                    <h2>MARISQUERÍA</h2>
+                    <p>Nota de Venta #{$order['id']}</p>
+                    <p>{$order['created_at']}</p>
+                </div>
+                <div class='info'>
+                    <p><strong>Mesa:</strong> {$order['table_number']} &nbsp;|&nbsp; <strong>Mesero:</strong> {$order['waiter_name']}</p>
+                    <p><strong>Cliente:</strong> " . ($order['customer_name'] ?? 'CONSUMIDOR FINAL') . "</p>
+                    <p><strong>Cédula/RUC:</strong> " . ($order['customer_id_number'] ?? '9999999999') . "</p>
+                    <p><strong>Método de Pago:</strong> {$paymentMethodLabel}</p>
+                </div>
+                <table class='table'>
+                    <tr>
+                        <th>Cant</th>
+                        <th>Descripción</th>
+                        <th class='text-right'>Total</th>
+                    </tr>";
+            
+            foreach ($order['items'] as $item) {
+                $subtotal = number_format($item['quantity'] * $item['price'], 2);
+                $html .= "<tr>
+                            <td>{$item['quantity']}</td>
+                            <td>{$item['product_name']}</td>
+                            <td class='text-right'>\${$subtotal}</td>
+                          </tr>";
+            }
+            
+            $html .= "
+                <tr class='total-row'>
+                    <td colspan='2' class='text-right'>TOTAL</td>
+                    <td class='text-right'>$" . number_format($order['total'], 2) . "</td>
+                </tr>
+            </table>";
+
+            if (!empty($order['payments'])) {
+                $html .= "<div style='margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px;'>
+                            <p style='margin: 0 0 5px 0; font-weight: bold; font-size: 11px;'>MÉTODOS DE PAGO:</p>";
+                foreach ($order['payments'] as $p) {
+                    $method = strtoupper($p['payment_method']);
+                    if ($p['bank_name']) {
+                        $method .= " (" . $p['bank_name'] . ")";
+                    }
+                    $html .= "<div style='display: flex; justify-content: space-between; font-size: 11px;'>
+                                <span>" . $method . "</span>
+                                <span>$" . number_format($p['amount'], 2) . "</span>
+                              </div>";
+                }
+                $html .= "</div>";
+            } else {
+                $html .= "<div style='margin-top: 10px; text-align: center; font-weight: bold; font-size: 12px; border: 1px solid #000; padding: 2px;'>
+                            PENDIENTE DE PAGO
+                          </div>";
+            }
+
+            $html .= "<div class='footer'>
+                <p>¡Gracias por su preferencia!</p>
+            </div>
+            </body>
+            </html>";
+
+            $dompdf = new \Dompdf\Dompdf();
+            $dompdf->loadHtml($html);
+            // 80mm is approx 226.77 points. 
+            // Setting a long dynamic height, DomPDF will adjust.
+            $dompdf->setPaper(array(0, 0, 226.77, 800)); 
+            $dompdf->render();
+            
+            header("Content-Type: application/pdf");
+            header("Content-Disposition: attachment; filename=\"orden_{$order['id']}.pdf\"");
+            echo $dompdf->output();
+            exit;
+        }
+
+        echo json_encode($order);
+    }
+
+    public function update(): void {
+        AuthMiddleware::handle();
+        $data = json_decode(file_get_contents('php://input'), true);
+        
+        $orderId = $data['order_id'] ?? null;
+        if (!$orderId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id is required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        
+        try {
+            $db->beginTransaction();
+            
+            // Get current order
+            $stmt = $db->prepare("SELECT status, table_id FROM orders WHERE id = ?");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$order) throw new Exception("Order not found");
+            if ($order['status'] === 'cobrado') throw new Exception("Cannot edit a paid order");
+
+            // Update items if provided
+            if (isset($data['items']) && is_array($data['items'])) {
+                // Delete existing items
+                $db->prepare("DELETE FROM order_items WHERE order_id = ?")->execute([$orderId]);
+                
+                $newTotal = 0;
+                $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
+                
+                foreach ($data['items'] as $item) {
+                    $stmtPrice = $db->prepare("SELECT price FROM products WHERE id = ?");
+                    $stmtPrice->execute([$item['product_id']]);
+                    $price = $stmtPrice->fetchColumn();
+                    
+                    if ($price === false) throw new Exception("Product ID {$item['product_id']} not found");
+                    
+                    $subtotal = $price * $item['quantity'];
+                    $newTotal += $subtotal;
+                    
+                    $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $item['notes'] ?? null]);
+                }
+                
+                // Update order total
+                $db->prepare("UPDATE orders SET total = ? WHERE id = ?")->execute([$newTotal, $orderId]);
+            }
+
+            // Update table_id if provided
+            if (array_key_exists('table_id', $data)) {
+                $newTableId = $data['table_id'];
+                if ($newTableId != $order['table_id']) {
+                    // Free old table
+                    if ($order['table_id']) {
+                        $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$order['table_id']]);
+                    }
+                    // Occupy new table
+                    if ($newTableId) {
+                        $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?")->execute([$newTableId]);
+                    }
+                    $db->prepare("UPDATE orders SET table_id = ? WHERE id = ?")->execute([$newTableId, $orderId]);
+                }
+            }
+
+            $db->commit();
+            echo json_encode(['message' => 'Order updated successfully']);
+            
+        } catch (Exception $e) {
+            $db->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
+        }
+    }
+
+    public function requestRemotePrint(): void {
+        AuthMiddleware::handle();
+        $orderId = $_GET['order_id'] ?? null;
+        if (!$orderId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id required']);
+            return;
+        }
+
+        NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Re-imprimiendo nota de venta...", [
+            'order_id' => (string)$orderId, 
+            'type' => 'print_request'
+        ]);
+
+        echo json_encode(['message' => 'Print request sent']);
+    }
+}

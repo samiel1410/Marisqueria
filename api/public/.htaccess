@@ -1,0 +1,9 @@
+Options -MultiViews
+RewriteEngine On
+# Preserve Authorization header so PHP (and the app) can access it via
+# $_SERVER['HTTP_AUTHORIZATION'] or apache_request_headers(). This is
+# required when running behind proxies that forward the Authorization header.
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
