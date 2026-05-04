@@ -55,20 +55,19 @@ class OrderController {
             }
 
             if ($existingOrder) {
-                if ($existingOrder['user_id'] != $user->id) {
-                    http_response_code(403);
-                    echo json_encode(['error' => 'La mesa ya está siendo atendida por otro mesero.']);
-                    return;
-                }
-
                 $orderId = $existingOrder['id'];
                 // Update total
                 $newTotal = $existingOrder['total'] + $newItemsTotal;
-                $db->prepare("UPDATE orders SET total = ? WHERE id = ?")->execute([$newTotal, $orderId]);
+                $db->prepare("UPDATE orders SET total = ?, updated_by = ? WHERE id = ?")->execute([$newTotal, $user->id, $orderId]);
             } else {
+                // Get next daily number
+                $stmtNum = $db->prepare("SELECT COALESCE(MAX(daily_number), 0) FROM orders WHERE DATE(created_at) = CURRENT_DATE");
+                $stmtNum->execute();
+                $nextDailyNum = (int)$stmtNum->fetchColumn() + 1;
+
                 // Create Order
-                $stmt = $db->prepare("INSERT INTO orders (table_id, user_id, total, status) VALUES (?, ?, ?, 'pendiente')");
-                $stmt->execute([$data['table_id'], $user->id, $newItemsTotal]);
+                $stmt = $db->prepare("INSERT INTO orders (table_id, user_id, total, status, daily_number) VALUES (?, ?, ?, 'pendiente', ?)");
+                $stmt->execute([$data['table_id'], $user->id, $newItemsTotal, $nextDailyNum]);
                 $orderId = $db->lastInsertId();
             }
 
@@ -104,8 +103,16 @@ class OrderController {
                 ['order_id' => (string)$orderId, 'table_id' => (string)$data['table_id']]
             );
             
+            // Get daily number to return it (either newly created or from existing)
+            $dailyNumberToReturn = $nextDailyNum ?? ($existingOrder['daily_number'] ?? null);
+            if (!$dailyNumberToReturn) {
+                $stmtNumFetch = $db->prepare("SELECT daily_number FROM orders WHERE id = ?");
+                $stmtNumFetch->execute([$orderId]);
+                $dailyNumberToReturn = $stmtNumFetch->fetchColumn();
+            }
+
             http_response_code(201);
-            echo json_encode(['message' => $existingOrder ? 'Order updated' : 'Order created', 'order_id' => $orderId]);
+            echo json_encode(['message' => $existingOrder ? 'Order updated' : 'Order created', 'order_id' => $orderId, 'daily_number' => $dailyNumberToReturn]);
             
         } catch (Exception $e) {
             $db->rollBack();
@@ -121,7 +128,7 @@ class OrderController {
         $userId = $_GET['user_id'] ?? null;
         
         $sql = "
-            SELECT o.*, t.number as table_number, u.username as waiter_name,
+            SELECT o.*, t.number as table_number, u.username as waiter_name, up.username as updated_by_name,
                    (SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = o.id) as total_paid,
                    (SELECT cr.name 
                     FROM cash_sessions cs 
@@ -132,6 +139,7 @@ class OrderController {
             FROM orders o
             LEFT JOIN restaurant_tables t ON o.table_id = t.id
             LEFT JOIN users u ON o.user_id = u.id
+            LEFT JOIN users up ON o.updated_by = up.id
         ";
         $params = [];
         
@@ -153,7 +161,7 @@ class OrderController {
         
         $db = Database::getConnection();
         $stmt = $db->query("
-            SELECT o.*, t.number as table_number, u.username as waiter_name,
+            SELECT o.*, t.number as table_number, u.username as waiter_name, up.username as updated_by_name,
                    (SELECT cr.name 
                     FROM cash_sessions cs 
                     JOIN cash_registers cr ON cs.register_id = cr.id 
@@ -163,12 +171,42 @@ class OrderController {
             FROM orders o
             LEFT JOIN restaurant_tables t ON o.table_id = t.id
             LEFT JOIN users u ON o.user_id = u.id
+            LEFT JOIN users up ON o.updated_by = up.id
             WHERE (o.status != 'cobrado' AND o.status != 'cancelado') 
                OR (o.table_id IS NULL AND o.status NOT IN ('entregado', 'cancelado'))
             ORDER BY o.created_at DESC
         ");
         
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    public function getKitchenOrders(): void {
+        AuthMiddleware::handle();
+        $db = Database::getConnection();
+        
+        $stmt = $db->query("
+            SELECT o.*, t.number as table_number, u.username as waiter_name
+            FROM orders o
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            LEFT JOIN users u ON o.user_id = u.id
+            WHERE o.status IN ('pendiente', 'en cocina')
+            ORDER BY o.created_at ASC
+        ");
+        
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($orders as &$order) {
+            $stmtItems = $db->prepare("
+                SELECT oi.*, p.name as product_name
+                FROM order_items oi
+                JOIN products p ON oi.product_id = p.id
+                WHERE oi.order_id = ?
+            ");
+            $stmtItems->execute([$order['id']]);
+            $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+        }
+        
+        echo json_encode($orders);
     }
 
     public function getByTable(): void {
@@ -185,7 +223,7 @@ class OrderController {
         
         // Find active order for this table
         $stmt = $db->prepare("
-            SELECT id, total, status, created_at 
+            SELECT id, daily_number, total, status, created_at 
             FROM orders 
             WHERE table_id = ? AND status != 'cobrado' 
             ORDER BY created_at DESC LIMIT 1
@@ -316,6 +354,14 @@ class OrderController {
                     receipt_image = NULL
                     WHERE id = ?")
                    ->execute([$data['order_id']]);
+
+                // Re-ocupar mesa si estaba asociada a una
+                $stmtTable = $db->prepare("SELECT table_id FROM orders WHERE id = ?");
+                $stmtTable->execute([$data['order_id']]);
+                $tableId = $stmtTable->fetchColumn();
+                if ($tableId) {
+                    $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?")->execute([$tableId]);
+                }
             }
 
             // If moving TO 'en cocina' from 'pendiente', discount stock
@@ -403,10 +449,10 @@ class OrderController {
                 }
 
                 // Actualizar orden con el nuevo estado y campos de referencia (opcional)
-                $db->prepare("UPDATE orders SET status = ?, payment_method = ?, customer_id = ?, bank_account_id = ?, cash_amount = ?, transfer_amount = ? WHERE id = ?")
-                   ->execute([$newStatus, $paymentMethod, $customerId, $bankId, $cashAmount, $transferAmount, $data['order_id']]);
+                $db->prepare("UPDATE orders SET status = ?, payment_method = ?, customer_id = ?, bank_account_id = ?, cash_amount = ?, transfer_amount = ?, updated_by = ? WHERE id = ?")
+                   ->execute([$newStatus, $paymentMethod, $customerId, $bankId, $cashAmount, $transferAmount, $user->id, $data['order_id']]);
             } else {
-                $db->prepare("UPDATE orders SET status = ? WHERE id = ?")->execute([$newStatus, $data['order_id']]);
+                $db->prepare("UPDATE orders SET status = ?, updated_by = ? WHERE id = ?")->execute([$newStatus, $user->id, $data['order_id']]);
             }
 
             // Liberar mesa solo si se cobró totalmente o se canceló
@@ -418,6 +464,10 @@ class OrderController {
                 NotificationService::sendToTopic('table_updates', 'Mesa Disponible', "Mesa disponible", ['table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
                 
                 if ($newStatus === 'cobrado') {
+                    // Registrar en la cola de impresión (Respaldo por si falla FCM)
+                    PrintQueueController::addJob('print_request', [
+                        'order_id' => (string)$data['order_id']
+                    ]);
                     NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string)$data['order_id'], 'type' => 'print_request']);
                 }
             }
@@ -537,8 +587,8 @@ class OrderController {
             </head>
             <body>
                 <div class='header'>
-                    <h2>MARISQUERÍA</h2>
-                    <p>Nota de Venta #{$order['id']}</p>
+                    <h2>KRUSTACIO KASCARUDO</h2>
+                    <p>Pedido #{$order['daily_number']}</p>
                     <p>{$order['created_at']}</p>
                 </div>
                 <div class='info'>
@@ -658,7 +708,7 @@ class OrderController {
                 }
                 
                 // Update order total
-                $db->prepare("UPDATE orders SET total = ? WHERE id = ?")->execute([$newTotal, $orderId]);
+                $db->prepare("UPDATE orders SET total = ?, updated_by = ? WHERE id = ?")->execute([$newTotal, $user->id, $orderId]);
             }
 
             // Update table_id if provided
@@ -696,11 +746,71 @@ class OrderController {
             return;
         }
 
+        // Registrar en la cola de impresión (Respaldo por si falla FCM)
+        PrintQueueController::addJob('print_request', [
+            'order_id' => (string)$orderId
+        ]);
+
         NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Re-imprimiendo nota de venta...", [
             'order_id' => (string)$orderId, 
             'type' => 'print_request'
         ]);
 
         echo json_encode(['message' => 'Print request sent']);
+    }
+
+    public function cancel(): void {
+        $user = AuthMiddleware::handle();
+        $data = json_decode(file_get_contents('php://input'), true);
+        
+        $orderId = $data['order_id'] ?? null;
+        if (!$orderId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id is required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        try {
+            $db->beginTransaction();
+            
+            $stmt = $db->prepare("SELECT status, table_id FROM orders WHERE id = ?");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$order) throw new Exception("Order not found");
+            if ($order['status'] === 'cancelado') throw new Exception("Order is already cancelled");
+
+            // 1. Revert stock if it was discounted
+            if (in_array($order['status'], ['en cocina', 'entregado', 'cobrado', 'parcial'])) {
+                $stmtItems = $db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
+                $stmtItems->execute([$orderId]);
+                $items = $stmtItems->fetchAll();
+                foreach ($items as $item) {
+                    $db->prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND manages_inventory = 1")
+                       ->execute([$item['quantity'], $item['product_id']]);
+                }
+            }
+
+            // 2. Delete payments
+            $db->prepare("DELETE FROM order_payments WHERE order_id = ?")->execute([$orderId]);
+
+            // 3. Update order status
+            $db->prepare("UPDATE orders SET status = 'cancelado', updated_by = ? WHERE id = ?")
+               ->execute([$user->id, $orderId]);
+
+            // 4. Free table
+            if ($order['table_id']) {
+                $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")
+                   ->execute([$order['table_id']]);
+            }
+
+            $db->commit();
+            echo json_encode(['message' => 'Order cancelled successfully']);
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Cancellation failed', 'details' => $e->getMessage()]);
+        }
     }
 }

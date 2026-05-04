@@ -17,20 +17,21 @@ const app = initializeApp(firebaseConfig);
 export const messaging = getMessaging(app);
 
 export const requestForToken = () => {
+  console.log('Requesting FCM token...');
   return getToken(messaging, { vapidKey: 'BHiqvtQxottxOkvDEsSmgN50n0o8yI4qbZKFh6VyboG-yH0LPusRqtVX4PQpMBFgnB094KN5YjAy0DZH3XrDKxI' })
     .then((currentToken) => {
       if (currentToken) {
-        console.log('current token for client: ', currentToken);
+        console.log('FCM Token generated successfully');
         // Send token to server to subscribe to topics
         api.post('/notifications/subscribe', { token: currentToken, topic: 'new_orders' })
-          .then(() => console.log('Subscribed to new_orders topic'))
+          .then(() => console.log('Successfully subscribed to new_orders'))
           .catch(err => console.error('Error subscribing to topic:', err));
       } else {
-        console.log('No registration token available. Request permission to generate one.');
+        console.warn('No registration token available.');
       }
     })
     .catch((err) => {
-      console.log('An error occurred while retrieving token. ', err);
+      console.error('An error occurred while retrieving token:', err);
     });
 };
 

@@ -4,7 +4,8 @@ export const PageHeader = ({
   title, 
   subtitle, 
   action,
-  breadcrumbs = []
+  breadcrumbs = [],
+  children
 }) => {
   return (
     <div className="mb-8">
@@ -37,6 +38,7 @@ export const PageHeader = ({
           )}
         </div>
         {action && <div>{action}</div>}
+        {children && <div>{children}</div>}
       </div>
     </div>
   );

@@ -295,6 +295,9 @@ export default function OrderEditModal({ isOpen, onClose, orderId, onSaveSuccess
                       <div className="relative z-10 flex flex-col h-full justify-between">
                         <div>
                           <Badge variant="secondary" className="mb-3 text-[9px] bg-slate-100 text-slate-500 border-none font-black tracking-widest px-2">{p.category_name}</Badge>
+                          {p.manages_inventory === 1 && p.stock <= p.min_stock && (
+                            <Badge variant="warning" className="ml-2 mb-3 text-[9px] font-black px-2 animate-pulse">¡Poco Stock!</Badge>
+                          )}
                           <h4 className="text-lg font-black text-slate-800 leading-tight group-hover:text-primary-900 transition-colors line-clamp-2">{p.name}</h4>
                         </div>
                         <div className="mt-6 flex items-center justify-between">

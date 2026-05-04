@@ -109,4 +109,161 @@ class InventoryController extends BaseController {
         $stmt->execute([$productId]);
         $this->sendJson(['branch_stock' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
     }
+
+    // GET /inventory/report?filter=[all|manages|not_manages]&branch_id=X
+    public function report(): void {
+        AuthMiddleware::handle(); // Ensure user is logged in
+        $db = Database::getConnection();
+        
+        $filter = $_GET['filter'] ?? 'all';
+        $branchId = $_GET['branch_id'] ?? null;
+        
+        $where = [];
+        $params = [];
+        
+        if ($filter === 'manages') {
+            $where[] = "p.manages_inventory = 1";
+        } elseif ($filter === 'not_manages') {
+            $where[] = "p.manages_inventory = 0";
+        }
+        
+        $whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+        
+        $sql = "
+            SELECT 
+                p.id, p.name, p.price, p.unit, p.min_stock, p.manages_inventory,
+                c.name as category_name,
+                br.name as brand_name,
+                COALESCE(SUM(pbs.stock), p.stock) as current_stock
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN brands br ON p.brand_id = br.id
+            LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
+            $whereSql
+            GROUP BY p.id
+            ORDER BY c.name, p.name
+        ";
+        
+        if ($branchId) {
+            $params[] = $branchId;
+        }
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $this->sendJson(['data' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+    }
+
+    // GET /inventory/report-print?filter=[all|manages|not_manages]&branch_id=X&remote=1&raw_html=1
+    public function reportPrint(): void {
+        AuthMiddleware::handle();
+        $db = Database::getConnection();
+        
+        $filter = $_GET['filter'] ?? 'all';
+        $branchId = $_GET['branch_id'] ?? null;
+        
+        $where = [];
+        if ($filter === 'manages') {
+            $where[] = "p.manages_inventory = 1";
+        } elseif ($filter === 'not_manages') {
+            $where[] = "p.manages_inventory = 0";
+        }
+        $whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+        
+        $sql = "
+            SELECT 
+                p.id, p.name, p.price, p.unit, p.min_stock, p.manages_inventory,
+                c.name as category_name,
+                COALESCE(SUM(pbs.stock), p.stock) as current_stock
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
+            $whereSql
+            GROUP BY p.id
+            ORDER BY c.name, p.name
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $params = $branchId ? [$branchId] : [];
+        $stmt->execute($params);
+        $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (isset($_GET['remote']) && $_GET['remote'] == 1) {
+            // Registrar en la cola de impresión (Respaldo por si falla FCM)
+            PrintQueueController::addJob('print_inventory_request', [
+                'filter' => $filter,
+                'branch_id' => (string)$branchId
+            ]);
+
+            // Si es impresión remota, enviar notificación (no verificar resultado — igual que en CashController)
+            \App\Infrastructure\Services\NotificationService::sendToTopic('new_orders', 'Imprimir Inventario', "Imprimiendo reporte de inventario...", [
+                'type' => 'print_inventory_request', 
+                'filter' => $filter,
+                'branch_id' => (string)$branchId
+            ]);
+            $this->sendJson(['success' => true]);
+            return;
+        }
+
+        if (isset($_GET['raw_html']) && $_GET['raw_html'] == 1) {
+            $branchName = "Consolidado";
+            if ($branchId) {
+                $stB = $db->prepare("SELECT name FROM branches WHERE id=?");
+                $stB->execute([$branchId]);
+                $branchName = $stB->fetchColumn() ?: "Sucursal #$branchId";
+            }
+
+            $dateStr = date('d/MM/Y H:i');
+            $html = "
+            <html>
+            <head>
+                <style>
+                    @page { margin: 0; }
+                    body { font-family: 'Courier New', Courier, monospace; font-size: 11px; width: 90%; margin: 0 auto; padding: 10px 5%; }
+                    .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 10px; }
+                    .table { width: 100%; border-collapse: collapse; }
+                    .table th { border-bottom: 1px solid #000; text-align: left; }
+                    .text-right { text-align: right; }
+                </style>
+            </head>
+            <body>
+                <div class='header'>
+                    <h2 style='margin:0;'>KRUSTACIO KASCARUDO</h2>
+                    <p style='margin:2px 0;'>REPORTE DE INVENTARIO</p>
+                    <p style='margin:2px 0; font-size:9px;'>$dateStr</p>
+                </div>
+                <div style='margin-bottom:8px;'>
+                    <p style='margin:2px 0;'><strong>Sucursal:</strong> $branchName</p>
+                    <p style='margin:2px 0;'><strong>Filtro:</strong> $filter</p>
+                </div>
+                <table class='table'>
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th class='text-right'>Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>";
+            foreach ($data as $item) {
+                $stock = $item['manages_inventory'] ? $item['current_stock'] . " " . $item['unit'] : "Ilimitado";
+                $html .= "
+                        <tr>
+                            <td style='padding:4px 0;'>{$item['name']}<br><small style='color:#666;'>{$item['category_name']}</small></td>
+                            <td class='text-right' style='padding:4px 0;'>$stock</td>
+                        </tr>";
+            }
+            $html .= "
+                    </tbody>
+                </table>
+                <div style='margin-top:15px; border-top:1px dashed #000; padding-top:5px; text-align:center;'>
+                    Total productos: " . count($data) . "
+                </div>
+            </body>
+            </html>";
+            header("Content-Type: text/html; charset=UTF-8");
+            echo $html;
+            exit;
+        }
+
+        $this->sendJson(['data' => $data]);
+    }
 }

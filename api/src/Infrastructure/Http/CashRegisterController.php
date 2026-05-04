@@ -9,6 +9,17 @@ class CashRegisterController extends BaseController {
     public function index(): void {
         AuthMiddleware::handle();
         $db = Database::getConnection();
+
+        // Ensure table exists (migration fallback)
+        $db->exec("CREATE TABLE IF NOT EXISTS cash_registers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            branch_id INT NULL,
+            name VARCHAR(100) NOT NULL,
+            description TEXT NULL,
+            status ENUM('active', 'inactive') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+
         $stmt = $db->query("
             SELECT cr.*,
                    b.name as branch_name,
@@ -23,7 +34,7 @@ class CashRegisterController extends BaseController {
                    (SELECT u.username FROM cash_sessions cs JOIN users u ON cs.user_id = u.id WHERE cs.register_id = cr.id AND cs.status = 'open' LIMIT 1) as open_by
             FROM cash_registers cr
             LEFT JOIN branches b ON cr.branch_id = b.id
-            ORDER BY cr.name ASC
+            ORDER BY cr.id DESC
         ");
         $this->sendJson(['registers' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     }
@@ -32,10 +43,14 @@ class CashRegisterController extends BaseController {
     public function store(): void {
         AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
-        $name = trim($data['name'] ?? '');
-        if (!$name) { $this->sendError('Name is required', 400); return; }
-
+        
         $db = Database::getConnection();
+        
+        // Auto-generate name based on count
+        $stmtCount = $db->query("SELECT COUNT(*) FROM cash_registers");
+        $nextNum = (int)$stmtCount->fetchColumn() + 1;
+        $name = "Caja " . $nextNum;
+
         $stmt = $db->prepare("INSERT INTO cash_registers (name, branch_id, description, status) VALUES (?,?,?,?)");
         $stmt->execute([
             $name,

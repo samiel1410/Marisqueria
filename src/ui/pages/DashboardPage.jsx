@@ -85,7 +85,7 @@ const DashboardPage = () => {
     <div className="animate-fade-in max-w-7xl mx-auto">
       <PageHeader
         title="Dashboard"
-        subtitle="Bienvenido, revisa el rendimiento de tu Marisquería hoy"
+        subtitle="Bienvenido, revisa el rendimiento de tu Krustacio Kascarudo hoy"
       />
 
       {/* Stats Grid */}
@@ -158,7 +158,7 @@ const DashboardPage = () => {
                   const StatusIcon = getStatusIcon(order.status);
                   return (
                     <div
-                      key={order.id}
+                      key={order.id || index}
                       className="flex items-center gap-4 p-4 rounded-2xl bg-primary-50/50 hover:bg-primary-100/50 transition-colors duration-200 animate-fade-in-up"
                       style={{ animationDelay: `${index * 100}ms` }}
                     >
@@ -221,7 +221,7 @@ const DashboardPage = () => {
               ) : (
                 popularProducts.map((product, index) => (
                   <div
-                    key={product.id}
+                    key={product.id || index}
                     className="flex items-center gap-3 animate-fade-in-up"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >

@@ -75,7 +75,7 @@ const LoginPage = () => {
               <div className="p-4 bg-brand/20 rounded-2xl">
                 <UtensilsCrossed className="w-12 h-12 text-brand" />
               </div>
-              <span className="text-2xl font-display font-bold text-white">Marisquería POS</span>
+              <span className="text-2xl font-display font-bold text-white">Krustacio Kascarudo POS</span>
             </div>
             
             <h1 className="text-5xl xl:text-6xl font-display font-bold text-white leading-tight mb-6">
@@ -131,7 +131,7 @@ const LoginPage = () => {
             <div className="p-3 bg-brand/10 rounded-xl">
               <UtensilsCrossed className="w-8 h-8 text-brand" />
             </div>
-            <span className="text-2xl font-display font-bold text-primary-900">Marisquería</span>
+            <span className="text-2xl font-display font-bold text-primary-900">Krustacio Kascarudo</span>
           </div>
 
           <div className="bg-white rounded-3xl shadow-soft p-8 lg:p-10">
@@ -206,7 +206,7 @@ const LoginPage = () => {
           </div>
 
           <p className="mt-8 text-sm text-center text-primary-400">
-            © 2026 Marisquería POS System. Todos los derechos reservados.
+            © 2026 Krustacio Kascarudo POS System. Todos los derechos reservados.
           </p>
         </div>
       </div>

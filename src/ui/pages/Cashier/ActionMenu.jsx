@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreVertical, Printer, Pencil, Trash2, Eye } from 'lucide-react';
+import { MoreVertical, Printer, Pencil, Trash2, Eye, LayoutDashboard } from 'lucide-react';
 
-export default function ActionMenu({ register, onSelect, onEdit, onDelete, onPrint }) {
+export default function ActionMenu({ register, onSelect, onView, onEdit, onEditRegister, onDelete, onPrint }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const containerRef = useRef(null);
@@ -15,8 +15,6 @@ export default function ActionMenu({ register, onSelect, onEdit, onDelete, onPri
     setOpen(true);
   };
 
-  // Usamos mousedown en document para detectar click fuera.
-  // mousedown se dispara ANTES que click, así no hay conflicto con handleOpen.
   useEffect(() => {
     if (!open) return;
     const onMouseDown = (e) => {
@@ -27,6 +25,8 @@ export default function ActionMenu({ register, onSelect, onEdit, onDelete, onPri
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [open]);
+
+  const isOpen = register.open_sessions > 0;
 
   return (
     <div ref={containerRef} className="relative inline-block">
@@ -43,15 +43,18 @@ export default function ActionMenu({ register, onSelect, onEdit, onDelete, onPri
           style={{ position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 }}
           className="w-48 bg-white rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.18)] border border-primary-100 p-2"
         >
+          {/* Opción principal dependiendo del estado */}
+
+          {/* Siempre disponible: Ver detalles */}
           <button
-            onClick={() => { onSelect(register); setOpen(false); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-brand hover:text-white text-primary-800 transition-all group"
+            onClick={() => { onView(register); setOpen(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-primary-50 text-primary-700 transition-all"
           >
-            <Eye size={16} className="shrink-0 text-brand group-hover:text-white" />
-            <span className="text-[11px] font-black uppercase tracking-wider">
-              {register.status === 'open' ? 'Gestionar' : 'Abrir Caja'}
-            </span>
+            <Eye size={16} className="shrink-0 text-primary-400" />
+            <span className="text-[11px] font-black uppercase tracking-wider">Ver Caja</span>
           </button>
+
+          <div className="h-px bg-primary-50 my-1 mx-3" />
 
           <button
             onClick={() => { onEdit(register); setOpen(false); }}
@@ -66,7 +69,7 @@ export default function ActionMenu({ register, onSelect, onEdit, onDelete, onPri
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-primary-50 text-primary-700 transition-all"
           >
             <Printer size={16} className="shrink-0 text-primary-400" />
-            <span className="text-[11px] font-black uppercase tracking-wider">Imprimir Último</span>
+            <span className="text-[11px] font-black uppercase tracking-wider">Imprimir Reporte</span>
           </button>
 
           <div className="h-px bg-primary-100 my-1 mx-3" />

@@ -5,12 +5,16 @@ import DashboardPage from './ui/pages/DashboardPage';
 import InventoryPage from './ui/pages/InventoryPage';
 import OrdersPage from './ui/pages/OrdersPage';
 import CashierPage from './ui/pages/CashierPage';
+import POSPage from './ui/pages/POSPage';
 import Layout from './ui/components/Layout';
-import { isSessionValid, clearSession } from './infrastructure/api';
+import api, { isSessionValid, clearSession } from './infrastructure/api';
 import { requestForToken, messaging } from './infrastructure/firebase';
 import { onMessage } from 'firebase/messaging';
-import { handleRemotePrint } from './infrastructure/PrinterService';
+import { handleRemotePrint, initQZSecurity } from './infrastructure/PrinterService';
 import './index.css';
+
+// Initialize QZ Security early
+initQZSecurity();
 
 const BranchesPage       = React.lazy(() => import('./ui/pages/BranchesPage'));
 const UsersPage          = React.lazy(() => import('./ui/pages/UsersPage'));
@@ -20,6 +24,8 @@ const BrandsPage         = React.lazy(() => import('./ui/pages/BrandsPage'));
 const BankAccountsPage   = React.lazy(() => import('./ui/pages/BankAccountsPage'));
 const PrinterSettingsPage = React.lazy(() => import('./ui/pages/PrinterSettingsPage'));
 const WeeklyPlanningPage  = React.lazy(() => import('./ui/pages/WeeklyPlanningPage'));
+const InventoryReportPage = React.lazy(() => import('./ui/pages/InventoryReportPage'));
+const KitchenDisplayPage  = React.lazy(() => import('./ui/pages/KitchenDisplayPage'));
 
 const Lazy = ({ children }) => <React.Suspense fallback={<div className="p-8 text-primary-400">Cargando...</div>}>{children}</React.Suspense>;
 
@@ -66,16 +72,28 @@ function App() {
       requestForToken();
     }
 
+    // Channel for cross-tab communication
+    const channel = new BroadcastChannel('fcm_updates');
+
     // Listen for foreground messages
     const unsubscribe = onMessage(messaging, (payload) => {
-      console.log('Notification received in App.jsx:', payload);
+      console.log('%c FCM RECEIVED in foreground:', 'background: #0088ff; color: white; font-weight: bold;', payload);
+      
+      // Broadcast to other tabs
+      console.log('Broadcasting to other tabs via channel...');
+      channel.postMessage(payload);
       
       // Handle automatic printing if it's a print request
       if (payload?.data?.type === 'print_request' && payload?.data?.order_id) {
+        console.log('Triggering remote print for order:', payload.data.order_id);
         handleRemotePrint(payload.data.order_id);
       } else if (payload?.data?.type === 'print_cash_request' && payload?.data?.session_id) {
         import('./infrastructure/PrinterService').then(({ handleRemoteCashPrint }) => {
           handleRemoteCashPrint(payload.data.session_id);
+        });
+      } else if (payload?.data?.type === 'print_inventory_request') {
+        import('./infrastructure/PrinterService').then(({ handleRemoteInventoryPrint }) => {
+          handleRemoteInventoryPrint(payload.data.filter, payload.data.branch_id);
         });
       }
 
@@ -86,17 +104,31 @@ function App() {
         });
       }
 
-      // Dispatch custom event for components to listen
+      // Dispatch custom event for components to listen in THIS tab
+      console.log('Dispatching fcm-message event to current window...');
       window.dispatchEvent(new CustomEvent('fcm-message', { detail: payload }));
     });
 
-    return () => unsubscribe();
+    // Listen for messages from OTHER tabs
+    channel.onmessage = (event) => {
+      console.log('%c FCM RECEIVED from another tab:', 'background: #ff8800; color: white; font-weight: bold;', event.data);
+      window.dispatchEvent(new CustomEvent('fcm-message', { detail: event.data }));
+    };
+
+    return () => {
+      unsubscribe();
+      channel.close();
+    };
   }, []);
+
+  // Note: Polling removed to rely exclusively on FCM events as per user request
 
   return (
     <Router>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        
+        <Route path="/kitchen" element={<ProtectedRoute><Lazy><KitchenDisplayPage /></Lazy></ProtectedRoute>} />
 
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
@@ -104,7 +136,9 @@ function App() {
           <Route path="inventory"  element={<InventoryPage />} />
           <Route path="inventory/categories" element={<Lazy><CategoriesPage /></Lazy>} />
           <Route path="inventory/brands"     element={<Lazy><BrandsPage /></Lazy>} />
+          <Route path="inventory/report"     element={<Lazy><InventoryReportPage /></Lazy>} />
           <Route path="orders"     element={<OrdersPage />} />
+          <Route path="pos"        element={<POSPage />} />
           <Route path="cashier"    element={<CashierPage />} />
           <Route path="branches"   element={<Lazy><BranchesPage /></Lazy>} />
           <Route path="users"      element={<Lazy><UsersPage /></Lazy>} />

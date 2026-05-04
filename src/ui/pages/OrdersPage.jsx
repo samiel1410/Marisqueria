@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api, { BASE_URL } from '../../infrastructure/api';
-import { ShoppingCart, Clock, CheckCircle2, ChevronRight, Filter, Search, Printer, DollarSign, XCircle, Calendar, Monitor, Edit3, MoreHorizontal, Eye, Undo2 } from 'lucide-react';
+import { ShoppingCart, Clock, CheckCircle2, ChevronRight, Filter, Search, Printer, DollarSign, XCircle, Calendar, Monitor, Edit3, MoreHorizontal, Eye, Undo2, Plus, FileText } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
+import { handleRemotePrint } from '../../infrastructure/PrinterService';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import DataTable from '../components/DataTable';
@@ -98,8 +99,8 @@ const OrdersPage = () => {
       header: 'Orden',
       render: (o) => (
         <div className="flex flex-col">
-          <span className="font-black text-primary-900">#{o.id}</span>
-          <span className="text-[10px] text-primary-400 font-bold uppercase tracking-tighter">ID Registro</span>
+          <span className="font-black text-primary-900">#{o.daily_number}</span>
+          <span className="text-[10px] text-primary-400 font-bold uppercase tracking-tighter">ID: {o.id}</span>
         </div>
       )
     },
@@ -141,8 +142,17 @@ const OrdersPage = () => {
     },
     {
       key: 'waiter',
-      header: 'Mesero',
-      render: (o) => <span className="text-sm font-semibold text-primary-700">{o.waiter_name}</span>
+      header: 'Personal',
+      render: (o) => (
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-primary-700">{o.waiter_name}</span>
+          {o.updated_by_name && (
+            <span className="text-[10px] text-primary-400 font-bold italic uppercase tracking-tighter">
+              Modificado por: {o.updated_by_name}
+            </span>
+          )}
+        </div>
+      )
     },
     {
       key: 'total',
@@ -186,6 +196,11 @@ const OrdersPage = () => {
       <PageHeader 
         title="Gestión de Órdenes" 
         subtitle="Monitorea y actualiza el estado de los pedidos en tiempo real"
+        action={
+          <Button variant="brand" icon={Plus} onClick={() => window.location.href = '/pos'}>
+            Nueva Orden
+          </Button>
+        }
       />
 
       <div className="flex flex-col md:flex-row gap-4 mb-8 items-center justify-between">
@@ -272,15 +287,36 @@ const OrdersPage = () => {
                         )}
                         
                         <button 
+                          onClick={() => { handleRemotePrint(o.id); setActiveMenuId(null); }}
+                          className="w-full px-4 py-2 text-left text-xs font-bold text-sky-600 hover:bg-sky-50 flex items-center gap-2"
+                        >
+                          <Printer size={14}/> Imprimir Ticket (QZ)
+                        </button>
+
+                        <button 
                           onClick={() => { handlePrint(o.id); setActiveMenuId(null); }}
                           className="w-full px-4 py-2 text-left text-xs font-bold text-primary-700 hover:bg-primary-50 flex items-center gap-2"
                         >
-                          <Printer size={14}/> Imprimir Recibo
+                          <FileText size={14}/> Descargar PDF
                         </button>
 
-                        {['pendiente', 'en cocina', 'entregado'].includes(o.status) && (
+                        {['pendiente', 'en cocina', 'entregado', 'parcial'].includes(o.status) && (
                           <button 
-                            onClick={() => { if(window.confirm('¿Cancelar esta orden?')) updateOrderStatus(o.id, 'cancelado'); setActiveMenuId(null); }}
+                            onClick={async () => { 
+                              if(window.confirm('¿Desea CANCELAR esta orden y revertir el stock?')) {
+                                try {
+                                  setLoading(true);
+                                  await api.post('/orders/cancel', { order_id: o.id });
+                                  showToast("Orden cancelada", { type: 'success' });
+                                  fetchOrders();
+                                } catch (e) {
+                                  showToast("Error al cancelar", { type: 'error' });
+                                } finally {
+                                  setLoading(false);
+                                }
+                              }
+                              setActiveMenuId(null); 
+                            }}
                             className="w-full px-4 py-2 text-left text-xs font-bold text-danger hover:bg-danger/5 flex items-center gap-2"
                           >
                             <XCircle size={14}/> Cancelar Orden

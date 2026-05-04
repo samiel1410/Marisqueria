@@ -18,7 +18,14 @@ class NotificationService {
             error_log("FCM: Sending notification to topic $topic");
             // 1. Get OAuth2 Access Token
             $scopes = ['https://www.googleapis.com/auth/cloud-platform'];
-            $credentials = new ServiceAccountCredentials($scopes, $serviceAccountPath);
+            $jsonContent = json_decode(file_get_contents($serviceAccountPath), true);
+            
+            // Asegurar que la clave privada tenga el formato correcto
+            if (isset($jsonContent['private_key'])) {
+                $jsonContent['private_key'] = str_replace("\\n", "\n", $jsonContent['private_key']);
+            }
+            
+            $credentials = new ServiceAccountCredentials($scopes, $jsonContent);
             $token = $credentials->fetchAuthToken(HttpHandlerFactory::build());
             $accessToken = $token['access_token'];
 
@@ -68,19 +75,26 @@ class NotificationService {
 
     public static function subscribeToTopic(string $token, string $topic): bool {
         $serviceAccountPath = __DIR__ . '/../../../service-account.json';
-        if (!file_exists($serviceAccountPath)) return false;
+        
+        if (!file_exists($serviceAccountPath)) {
+            error_log("CRITICAL: Firebase service-account.json MISSING at $serviceAccountPath. Notifications will not work.");
+            return false;
+        }
 
         try {
             $scopes = ['https://www.googleapis.com/auth/cloud-platform'];
             $credentials = new ServiceAccountCredentials($scopes, $serviceAccountPath);
             $tokenData = $credentials->fetchAuthToken(HttpHandlerFactory::build());
+            
+            if (!isset($tokenData['access_token'])) {
+                error_log("FCM Subscribe Error: Could not fetch access token. Check service-account.json permissions.");
+                return false;
+            }
+            
             $accessToken = $tokenData['access_token'];
 
-            $url = "https://iid.googleapis.com/iid/v1:batchAdd";
-            $data = [
-                'to' => "/topics/$topic",
-                'registration_tokens' => [$token]
-            ];
+            // Usar el endpoint individual que suele ser más estable con OAuth2
+            $url = "https://iid.googleapis.com/iid/v1/$token/rel/topics/$topic";
 
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
@@ -88,14 +102,17 @@ class NotificationService {
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Authorization: Bearer ' . $accessToken,
                 'Content-Type: application/json',
-                'access_token_auth: true'
+                'Content-Length: 0'
             ]);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+
+            if ($httpCode !== 200) {
+                error_log("FCM Subscribe Error ($topic): Response code $httpCode, response: $response");
+            }
 
             return $httpCode === 200;
         } catch (\Exception $e) {

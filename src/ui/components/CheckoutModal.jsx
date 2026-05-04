@@ -439,7 +439,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                     onClick={() => {
                       const token = localStorage.getItem('token');
                       const url = `${BASE_URL}/orders/print?order_id=${order.id}&token=${token}`;
-                      const text = encodeURIComponent(`¡Hola! Aquí tienes tu nota de venta de Marisquería: ${url}`);
+                      const text = encodeURIComponent(`¡Hola! Aquí tienes tu nota de venta de Krustacio Kascarudo: ${url}`);
                       window.open(`https://wa.me/?text=${text}`, '_blank');
                     }}
                     className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-all"

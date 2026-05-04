@@ -568,8 +568,15 @@ export default function TablesPage() {
                 onPointerDown={onPointerDown}
                 onClick={(t) => {
                   setSelected(t.id);
-                  if (!editMode && t.status === 'ocupada') fetchOrderData(t.id);
-                  else setActiveOrder(null);
+                  if (!editMode) {
+                    if (t.status === 'ocupada') {
+                      fetchOrderData(t.id);
+                    } else if (t.status === 'disponible') {
+                      window.location.href = `/pos?table_id=${t.id}`;
+                    }
+                  } else {
+                    setActiveOrder(null);
+                  }
                 }}
                 onEdit={(t) => { setEditingTable(t); setModalOpen(true); }}
                 onDelete={handleDelete}

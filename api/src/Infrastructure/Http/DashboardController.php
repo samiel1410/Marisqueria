@@ -91,7 +91,7 @@ class DashboardController extends BaseController {
         $outOfStock = (int) $stmt->fetchColumn();
         
         // 5. Popular Products
-        $sql = "SELECT p.name, SUM(oi.quantity) as total_sold
+        $sql = "SELECT p.id, p.name, SUM(oi.quantity) as total_sold
             FROM order_items oi
             JOIN products p ON oi.product_id = p.id
             JOIN orders o ON oi.order_id = o.id

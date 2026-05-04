@@ -6,7 +6,8 @@ $allowedOrigins = [
     'http://localhost:5175',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174'
+    'http://127.0.0.1:5174',
+    'https://marisqueria-pi.vercel.app'
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -29,7 +30,6 @@ if (file_exists(__DIR__ . '/../../.env')) {
     $dotenv->load();
 }
 
-header('Content-Type: application/json; charset=utf-8');
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
@@ -74,8 +74,10 @@ $router->add('POST', '/brands/delete', [\App\Infrastructure\Http\BrandController
 // Inventory
 $router->add('GET', '/inventory', [\App\Infrastructure\Http\ProductController::class, 'index']);
 $router->add('GET', '/inventory/movements', [\App\Infrastructure\Http\InventoryController::class, 'movements']);
+$router->add('GET', '/inventory/report-print', [\App\Infrastructure\Http\InventoryController::class, 'reportPrint']);
 $router->add('POST', '/inventory/movement', [\App\Infrastructure\Http\InventoryController::class, 'addMovement']);
 $router->add('GET', '/inventory/branch-stock', [\App\Infrastructure\Http\InventoryController::class, 'branchStock']);
+$router->add('GET', '/inventory/report', [\App\Infrastructure\Http\InventoryController::class, 'report']);
 
 // Tables
 $router->add('GET', '/tables', [\App\Infrastructure\Http\TableController::class, 'index']);
@@ -98,6 +100,7 @@ $router->add('GET', '/cash/movements', [\App\Infrastructure\Http\CashController:
 $router->add('POST', '/cash/open', [\App\Infrastructure\Http\CashController::class, 'openSession']);
 $router->add('POST', '/cash/close', [\App\Infrastructure\Http\CashController::class, 'closeSession']);
 $router->add('POST', '/cash/movement', [\App\Infrastructure\Http\CashController::class, 'addMovement']);
+$router->add('POST', '/cash/movement/update', [\App\Infrastructure\Http\CashController::class, 'updateMovement']);
 $router->add('POST', '/cash/movement/delete', [\App\Infrastructure\Http\CashController::class, 'deleteMovement']);
 $router->add('POST', '/cash/update-breakdown', [\App\Infrastructure\Http\CashController::class, 'updateBreakdowns']);
 $router->add('GET', '/cash/session-details', [\App\Infrastructure\Http\CashController::class, 'sessionDetails']);
@@ -125,10 +128,13 @@ $router->add('POST', '/banks/upload-qr', [\App\Infrastructure\Http\BankControlle
 // Product Schedules
 $router->add('GET', '/product-schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'index']);
 $router->add('POST', '/product-schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'save']);
+$router->add('GET', '/schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'index']);
+$router->add('POST', '/schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'save']);
 
 // Orders
 $router->add('GET', '/orders', [\App\Infrastructure\Http\OrderController::class, 'index']);
 $router->add('GET', '/orders/active', [\App\Infrastructure\Http\OrderController::class, 'getActiveOrders']);
+$router->add('GET', '/orders/kitchen', [\App\Infrastructure\Http\OrderController::class, 'getKitchenOrders']);
 $router->add('GET', '/orders/table', [\App\Infrastructure\Http\OrderController::class, 'getByTable']);
 $router->add('GET', '/orders/details', [\App\Infrastructure\Http\OrderController::class, 'getDetails']);
 $router->add('GET', '/orders/print', [\App\Infrastructure\Http\OrderController::class, 'getPrintData']);
@@ -136,12 +142,21 @@ $router->add('GET', '/orders/reprint', [\App\Infrastructure\Http\OrderController
 $router->add('POST', '/orders', [\App\Infrastructure\Http\OrderController::class, 'store']);
 $router->add('POST', '/orders/status', [\App\Infrastructure\Http\OrderController::class, 'updateStatus']);
 $router->add('POST', '/orders/update', [\App\Infrastructure\Http\OrderController::class, 'update']);
+$router->add('POST', '/orders/cancel', [\App\Infrastructure\Http\OrderController::class, 'cancel']);
 
 // Dashboard
 $router->add('GET', '/dashboard/stats', [\App\Infrastructure\Http\DashboardController::class, 'getStats']);
 
 // Notifications
 $router->add('POST', '/notifications/subscribe', [\App\Infrastructure\Http\NotificationController::class, 'subscribe']);
+
+// QZ Tray Security
+$router->add('POST', '/qz/sign', [\App\Infrastructure\Http\PrintSignatureController::class, 'sign']);
+$router->add('GET', '/qz/certificate', [\App\Infrastructure\Http\PrintSignatureController::class, 'certificate']);
+
+// Print Queue
+$router->add('GET', '/print-queue', [\App\Infrastructure\Http\PrintQueueController::class, 'getPending']);
+$router->add('POST', '/print-queue/status', [\App\Infrastructure\Http\PrintQueueController::class, 'updateStatus']);
 
 // Weekly Planning
 // Temporary reset route

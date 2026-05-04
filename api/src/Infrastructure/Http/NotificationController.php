@@ -20,10 +20,14 @@ class NotificationController {
         $success = NotificationService::subscribeToTopic($token, $topic);
 
         if ($success) {
-            echo json_encode(['message' => 'Subscribed successfully']);
+            echo json_encode(['message' => 'Subscribed successfully', 'status' => 'ok']);
         } else {
-            http_response_code(500);
-            echo json_encode(['error' => 'Failed to subscribe']);
+            // No devolvemos 500 para evitar errores críticos en el frontend si falla Firebase
+            echo json_encode([
+                'message' => 'Subscription failed but request processed',
+                'status' => 'error',
+                'error' => 'Could not subscribe to topic. Check server logs.'
+            ]);
         }
     }
 }

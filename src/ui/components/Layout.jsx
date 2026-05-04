@@ -4,7 +4,8 @@ import { ToastProvider } from './Toast';
 import {
   LayoutDashboard, Package, ListOrdered, LogOut,
   Wallet, GitBranch, Users, Table2, UtensilsCrossed,
-  ChevronDown, ChevronRight, Tag, Award, CreditCard, Printer, Calendar
+  ChevronDown, ChevronRight, Tag, Award, CreditCard, Printer, Calendar, FileBarChart,
+  ShoppingCart, ChefHat
 } from 'lucide-react';
 import { clearSession } from '../../infrastructure/api';
 
@@ -58,7 +59,7 @@ const Layout = () => {
             <UtensilsCrossed size={22} className="text-brand" />
           </div>
           <div>
-            <h2 className="text-lg font-display font-bold text-primary-900 leading-tight">Marisquería</h2>
+            <h2 className="text-lg font-display font-bold text-primary-900 leading-tight">Krustacio Kascarudo</h2>
             <span className="text-brand font-bold text-xs tracking-widest uppercase">POS</span>
           </div>
         </div>
@@ -99,6 +100,9 @@ const Layout = () => {
                 <Link to="/inventory/brands" className={subLinkClass('/inventory/brands')}>
                   <Award size={15} /> Marcas
                 </Link>
+                <Link to="/inventory/report" className={subLinkClass('/inventory/report')}>
+                  <FileBarChart size={15} /> Reporte de Inventario
+                </Link>
                 <Link to="/planning" className={subLinkClass('/planning')}>
                   <Calendar size={15} /> Planeación Semanal
                 </Link>
@@ -106,8 +110,16 @@ const Layout = () => {
             )}
           </div>
 
+          <Link to="/pos" className={linkClass('/pos')}>
+            <ShoppingCart size={18} /> Punto de Venta
+          </Link>
+
           <Link to="/orders" className={linkClass('/orders')}>
             <ListOrdered size={18} /> Órdenes Activas
+          </Link>
+
+          <Link to="/kitchen" target="_blank" className={linkClass('/kitchen')}>
+            <ChefHat size={18} /> Pantalla Cocina
           </Link>
 
           <Link to="/cashier" className={linkClass('/cashier')}>

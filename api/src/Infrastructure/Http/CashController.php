@@ -134,35 +134,17 @@ class CashController extends BaseController {
         }
 
         $registerId = $data['register_id'] ?? null;
-
         $db = Database::getConnection();
 
-        // Verificar si el usuario ya tiene una sesión abierta en CUALQUIER caja
-        $stmtUser = $db->prepare("SELECT cs.id, cr.name as register_name
-            FROM cash_sessions cs
-            LEFT JOIN cash_registers cr ON cs.register_id = cr.id
-            WHERE cs.user_id = ? AND cs.status = 'open'
-            LIMIT 1");
-        $stmtUser->execute([$user->id]);
-        $existingSession = $stmtUser->fetch(PDO::FETCH_ASSOC);
-        if ($existingSession) {
-            $cajaNombre = $existingSession['register_name'] ?? 'otra caja';
-            $this->sendError("Ya tienes una sesión abierta en \"$cajaNombre\". Ciérrala antes de abrir una nueva.", 400);
-            return;
-        }
-
-        // Verificar si el usuario ya abrió caja HOY (misma fecha)
-        $stmtToday = $db->prepare("SELECT cs.id, cr.name as register_name
-            FROM cash_sessions cs
-            LEFT JOIN cash_registers cr ON cs.register_id = cr.id
-            WHERE cs.user_id = ? AND DATE(cs.opened_at) = CURDATE()
-            LIMIT 1");
-        $stmtToday->execute([$user->id]);
-        $todaySession = $stmtToday->fetch(PDO::FETCH_ASSOC);
-        if ($todaySession) {
-            $cajaNombre = $todaySession['register_name'] ?? 'una caja';
-            $this->sendError("Ya abriste caja hoy en \"$cajaNombre\". Solo se permite una apertura por día por usuario.", 400);
-            return;
+        if (!$registerId) {
+            // Check current registers count to generate next name
+            $stmtCount = $db->query("SELECT COUNT(*) FROM cash_registers");
+            $count = (int)$stmtCount->fetchColumn();
+            $nextName = "Caja " . ($count + 1);
+            
+            $stmtNew = $db->prepare("INSERT INTO cash_registers (name, status) VALUES (?, 'active')");
+            $stmtNew->execute([$nextName]);
+            $registerId = $db->lastInsertId();
         }
 
         // Verificar si la caja específica ya tiene sesión abierta (por otro usuario)
@@ -246,7 +228,28 @@ class CashController extends BaseController {
         ]]);
     }
 
-    // POST /cash/movement  { type: ingreso|egreso, amount, description }
+    // POST /cash/movement/update
+    public function updateMovement(): void {
+        AuthMiddleware::handle();
+        $data = json_decode(file_get_contents('php://input'), true);
+        $id = $data['id'] ?? null;
+        $amount = (float)($data['amount'] ?? 0);
+        $type = $data['type'] ?? null;
+        $desc = $data['description'] ?? null;
+
+        if (!$id || !in_array($type, ['ingreso','egreso']) || $amount <= 0) {
+            $this->sendError('ID, type y amount > 0 son requeridos', 400);
+            return;
+        }
+
+        $db = Database::getConnection();
+        $db->prepare("UPDATE cash_movements SET type=?, amount=?, description=? WHERE id=?")
+           ->execute([$type, $amount, $desc, $id]);
+
+        $this->sendSuccess([], 'Movimiento actualizado');
+    }
+
+    // POST /cash/movement
     public function addMovement(): void {
         $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
@@ -429,7 +432,7 @@ class CashController extends BaseController {
             </head>
             <body style='padding: 5px;'>
                 <div class='header'>
-                    <h2>MARISQUERÍA</h2>
+                    <h2>KRUSTACIO KASCARUDO</h2>
                     <p>RESUMEN DE CAJA</p>
                     <p>#{$session['id']}</p>
                 </div>
@@ -505,6 +508,11 @@ class CashController extends BaseController {
             </html>";
 
             if (isset($_GET['remote']) && $_GET['remote'] == 1) {
+                // Registrar en la cola de impresión (Respaldo por si falla FCM)
+                PrintQueueController::addJob('print_cash_request', [
+                    'session_id' => (string)$id
+                ]);
+
                 // If remote printing, send notification (DO NOT SEND HTML in payload, it exceeds 4KB limit)
                 \App\Infrastructure\Services\NotificationService::sendToTopic('new_orders', 'Imprimir Caja', "Imprimiendo reporte de caja...", [
                     'type' => 'print_cash_request', 
