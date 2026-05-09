@@ -564,11 +564,11 @@ class OrderController {
                     * { box-sizing: border-box; }
                     body { 
                         font-family: 'Courier New', Courier, monospace; 
-                        font-size: 11px; 
+                        font-size: 10px; 
                         color: #000; 
                         margin: 0 auto; 
-                        width: 90%; 
-                        padding: 0 5%; 
+                        width: 58mm; 
+                        padding: 0 2mm; 
                     }
                     .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
                     .header h2 { margin: 0; font-size: 16px; font-weight: bold; }
@@ -648,9 +648,8 @@ class OrderController {
  
             $dompdf = new \Dompdf\Dompdf();
             $dompdf->loadHtml($html);
-            // 80mm is approx 226.77 points. 
-            // Setting a long dynamic height, DomPDF will adjust.
-            $dompdf->setPaper(array(0, 0, 226.77, 800)); 
+            // 58mm is approx 164.41 points.
+            $dompdf->setPaper(array(0, 0, 164.41, 800)); 
             $dompdf->render();
             
             $disposition = (isset($_GET['download']) && $_GET['download'] == 1) ? 'attachment' : 'inline';
@@ -835,11 +834,11 @@ class OrderController {
                     * { box-sizing: border-box; }
                     body { 
                         font-family: 'Courier New', Courier, monospace; 
-                        font-size: 14px; 
+                        font-size: 12px; 
                         color: #000; 
                         margin: 0 auto; 
-                        width: 90%; 
-                        padding: 0 5%; 
+                        width: 58mm; 
+                        padding: 0 2mm; 
                     }
                     .header { text-align: center; margin-bottom: 10px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
                     .header h2 { margin: 0; font-size: 18px; font-weight: bold; }

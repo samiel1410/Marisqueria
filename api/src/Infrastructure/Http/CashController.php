@@ -412,11 +412,11 @@ class CashController extends BaseController {
                     * { box-sizing: border-box; }
                     body { 
                         font-family: 'Courier New', Courier, monospace; 
-                        font-size: 11px; 
+                        font-size: 10px; 
                         color: #000; 
                         margin: 0 auto;
-                        width: 90%;
-                        padding: 0 5%;
+                        width: 58mm;
+                        padding: 0 2mm;
                     }
                     .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
                     .header h2 { margin: 0; font-size: 14px; }
@@ -531,7 +531,8 @@ class CashController extends BaseController {
 
             $dompdf = new \Dompdf\Dompdf();
             $dompdf->loadHtml($html);
-            $dompdf->setPaper(array(0, 0, 226.77, 600)); 
+            // 58mm is approx 164.41 points.
+            $dompdf->setPaper(array(0, 0, 164.41, 600)); 
             $dompdf->render();
             
             header("Content-Type: application/pdf");

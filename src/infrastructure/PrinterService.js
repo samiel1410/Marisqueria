@@ -84,8 +84,9 @@ export const handleRemotePrint = async (orderId) => {
         type: 'pixel',
         format: 'html',
         flavor: 'plain',
+        options: { pageWidth: 2.28, units: 'in' },
         data: `
-          <div style="font-family: 'Courier New', Courier, monospace; width: 90%; margin: 0 auto; padding: 0 5%; font-size: 11px; color: #000; box-sizing: border-box;">
+          <div style="font-family: 'Courier New', Courier, monospace; width: 58mm; margin: 0 auto; padding: 0 2mm; font-size: 10px; color: #000; box-sizing: border-box;">
             <div style="text-align: center; margin-bottom: 10px;">
               <h2 style="margin: 0; font-size: 16px; font-weight: bold;">KRUSTACIO KASCARUDO</h2>
               <p style="margin: 0; font-size: 11px;">Nota de Venta</p>
