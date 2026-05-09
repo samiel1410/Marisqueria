@@ -81,8 +81,9 @@ export const handleRemotePrint = async (orderId) => {
 
     const printData = [
       {
-        type: 'html',
-        format: 'plain',
+        type: 'pixel',
+        format: 'html',
+        flavor: 'plain',
         data: `
           <div style="font-family: 'Courier New', Courier, monospace; width: 90%; margin: 0 auto; padding: 0 5%; font-size: 11px; color: #000; box-sizing: border-box;">
             <div style="text-align: center; margin-bottom: 10px;">
@@ -192,7 +193,7 @@ export const handleRemoteKitchenPrint = async (orderId) => {
     });
     
     const htmlData = response.data;
-    const printData = [{ type: 'html', format: 'plain', data: htmlData }];
+    const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', data: htmlData }];
     
     await window.qz.print(config, printData);
     console.log("Kitchen Print successful");
@@ -224,7 +225,7 @@ export const handleRemoteCashPrint = async (sessionId) => {
       });
       
       const htmlData = response.data;
-      const printData = [{ type: 'html', format: 'plain', data: htmlData }];
+      const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', data: htmlData }];
       await window.qz.print(config, printData);
       console.log("HTML Print successful");
     } catch (err) {
@@ -257,7 +258,7 @@ export const handleRemoteInventoryPrint = async (filter, branchId) => {
       });
       
       const htmlData = response.data;
-      const printData = [{ type: 'html', format: 'plain', data: htmlData }];
+      const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', data: htmlData }];
       await window.qz.print(config, printData);
       console.log("Inventory Print successful");
     } catch (err) {

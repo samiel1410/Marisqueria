@@ -85,8 +85,9 @@ const PrinterSettingsPage = () => {
         : window.qz.configs.create(printerNameOrIp);
 
       const printData = [{
-        type: 'html',
-        format: 'plain',
+        type: 'pixel',
+        format: 'html',
+        flavor: 'plain',
         data: `
           <div style="font-family: 'Courier New', Courier, monospace; width: 260px; text-align: center; border: 1px dashed #ccc; padding: 10px; box-sizing: border-box;">
             <h3 style="margin: 0; font-size: 16px;">KRUSTACIO KASCARUDO</h3>
