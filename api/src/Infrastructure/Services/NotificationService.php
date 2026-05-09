@@ -9,6 +9,12 @@ class NotificationService {
     
     public static function sendToTopic(string $topic, string $title, string $body, array $data = []): bool {
         $serviceAccountPath = __DIR__ . '/../../../service-account.json';
+        if (getenv('FIREBASE_CREDENTIALS')) {
+            $serviceAccountPath = sys_get_temp_dir() . '/service-account.json';
+            if (!file_exists($serviceAccountPath)) {
+                file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
+            }
+        }
         if (!file_exists($serviceAccountPath)) {
             error_log("Firebase Service Account file not found at $serviceAccountPath");
             return false;
@@ -98,6 +104,12 @@ class NotificationService {
 
     public static function subscribeToTopic(string $token, string $topic): bool {
         $serviceAccountPath = __DIR__ . '/../../../service-account.json';
+        if (getenv('FIREBASE_CREDENTIALS')) {
+            $serviceAccountPath = sys_get_temp_dir() . '/service-account.json';
+            if (!file_exists($serviceAccountPath)) {
+                file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
+            }
+        }
         
         if (!file_exists($serviceAccountPath)) {
             error_log("CRITICAL: Firebase service-account.json MISSING at $serviceAccountPath. Notifications will not work.");

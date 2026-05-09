@@ -5,6 +5,12 @@ use Google\Auth\HttpHandler\HttpHandlerFactory;
 
 $data = ['order_id' => '13', 'type' => 'print_kitchen_request'];
 $serviceAccountPath = __DIR__ . '/service-account.json';
+if (getenv('FIREBASE_CREDENTIALS')) {
+    $serviceAccountPath = sys_get_temp_dir() . '/service-account.json';
+    if (!file_exists($serviceAccountPath)) {
+        file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
+    }
+}
 $scopes = ['https://www.googleapis.com/auth/cloud-platform'];
 $credentials = new ServiceAccountCredentials($scopes, $serviceAccountPath);
 $tokenData = $credentials->fetchAuthToken(HttpHandlerFactory::build());
