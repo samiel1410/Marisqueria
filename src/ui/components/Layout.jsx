@@ -3,7 +3,7 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { ToastProvider } from './Toast';
 import {
   LayoutDashboard, Package, ListOrdered, LogOut,
-  Wallet, GitBranch, Users, Table2, UtensilsCrossed,
+  Wallet, GitBranch, Users, UserPlus, Table2, UtensilsCrossed,
   ChevronDown, ChevronRight, Tag, Award, CreditCard, Printer, Calendar, FileBarChart,
   ShoppingCart, ChefHat
 } from 'lucide-react';
@@ -124,6 +124,10 @@ const Layout = () => {
 
           <Link to="/cashier" className={linkClass('/cashier')}>
             <Wallet size={18}/> Caja y Ventas
+          </Link>
+
+          <Link to="/customers" className={linkClass('/customers')}>
+            <UserPlus size={18} /> Clientes
           </Link>
 
           <Link to="/printers" className={linkClass('/printers')}>

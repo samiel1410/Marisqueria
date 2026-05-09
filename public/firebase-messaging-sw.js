@@ -14,11 +14,31 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification.title;
-  const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/firebase-logo.png'
-  };
+  
+  // Forward the message to any open tabs so they can trigger QZ Tray
+  const channel = new BroadcastChannel('fcm_updates');
+  channel.postMessage(payload);
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // Optionally show a notification if there's data we want to display
+  if (payload.notification) {
+    const notificationTitle = payload.notification.title;
+    const notificationOptions = {
+      body: payload.notification.body,
+      icon: '/firebase-logo.png'
+    };
+    self.registration.showNotification(notificationTitle, notificationOptions);
+  } else if (payload.data && payload.data.type) {
+    let title = "Nueva Notificación";
+    let body = "Hay una nueva actualización en el sistema.";
+    
+    if (payload.data.type === 'print_kitchen_request') {
+      title = "Imprimiendo Comanda";
+      body = "Comanda de cocina enviada a la impresora.";
+    } else if (payload.data.type === 'print_request') {
+      title = "Imprimiendo Ticket";
+      body = "Ticket de venta enviado a la impresora.";
+    }
+
+    self.registration.showNotification(title, { body, icon: '/firebase-logo.png' });
+  }
 });

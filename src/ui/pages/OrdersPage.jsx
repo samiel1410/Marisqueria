@@ -28,10 +28,7 @@ const OrdersPage = () => {
     fetchOrders();
     
     const handleMessage = (event) => {
-      const payload = event.detail;
-      if (payload?.data?.type === 'print_request' && payload?.data?.order_id) {
-        handlePrint(payload.data.order_id);
-      }
+      // Solo refrescamos la lista de órdenes cuando llega un mensaje FCM
       fetchOrders();
     };
 
@@ -297,7 +294,7 @@ const OrdersPage = () => {
                           onClick={() => { handlePrint(o.id); setActiveMenuId(null); }}
                           className="w-full px-4 py-2 text-left text-xs font-bold text-primary-700 hover:bg-primary-50 flex items-center gap-2"
                         >
-                          <FileText size={14}/> Descargar PDF
+                          <FileText size={14}/> Imprimir / PDF
                         </button>
 
                         {['pendiente', 'en cocina', 'entregado', 'parcial'].includes(o.status) && (
@@ -351,8 +348,8 @@ const OrdersPage = () => {
       <PDFModal
         isOpen={!!printOrder}
         onClose={() => setPrintOrder(null)}
-        title={`Orden #${printOrder}`}
-        pdfUrl={`${BASE_URL}/orders/print?order_id=${printOrder}&download=1&token=${localStorage.getItem('token')}`}
+        title={`Orden #${paginatedOrders.find(o => o.id === printOrder)?.daily_number || printOrder}`}
+        pdfUrl={`${BASE_URL}/orders/print?order_id=${printOrder}&view=1&token=${localStorage.getItem('token')}`}
       />
 
       <OrderEditModal

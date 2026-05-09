@@ -74,8 +74,39 @@ class CustomerController {
     
     public function index(): void {
         AuthMiddleware::handle();
+        $search = $_GET['search'] ?? null;
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = (int)($_GET['limit'] ?? 50);
+        $offset = ($page - 1) * $limit;
+
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT * FROM customers ORDER BY name ASC LIMIT 100");
-        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        
+        $sql = "SELECT * FROM customers WHERE 1=1";
+        $params = [];
+
+        if ($search) {
+            $sql .= " AND (name LIKE ? OR identification LIKE ?)";
+            $params[] = "%$search%";
+            $params[] = "%$search%";
+        }
+
+        // Get total for pagination
+        $countSql = str_replace("SELECT * FROM customers", "SELECT COUNT(*) FROM customers", $sql);
+        $stmtCount = $db->prepare($countSql);
+        $stmtCount->execute($params);
+        $total = $stmtCount->fetchColumn();
+
+        $sql .= " ORDER BY name ASC LIMIT $limit OFFSET $offset";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'data' => $customers,
+            'total' => (int)$total,
+            'page' => $page,
+            'limit' => $limit,
+            'total_pages' => ceil($total / $limit)
+        ]);
     }
 }

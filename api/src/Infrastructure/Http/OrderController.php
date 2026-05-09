@@ -553,7 +553,7 @@ class OrderController {
         $stmtPayments->execute([$orderId]);
         $order['payments'] = $stmtPayments->fetchAll(PDO::FETCH_ASSOC);
 
-        if (isset($_GET['download']) && $_GET['download'] == 1) {
+        if ((isset($_GET['download']) && $_GET['download'] == 1) || (isset($_GET['view']) && $_GET['view'] == 1)) {
             $paymentMethodLabel = ucfirst($order['payment_method'] ?? 'Pendiente');
             
             $html = "
@@ -619,7 +619,7 @@ class OrderController {
                     <td class='text-right'>$" . number_format($order['total'], 2) . "</td>
                 </tr>
             </table>";
-
+ 
             if (!empty($order['payments'])) {
                 $html .= "<div style='margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px;'>
                             <p style='margin: 0 0 5px 0; font-weight: bold; font-size: 11px;'>MÉTODOS DE PAGO:</p>";
@@ -639,13 +639,13 @@ class OrderController {
                             PENDIENTE DE PAGO
                           </div>";
             }
-
+ 
             $html .= "<div class='footer'>
                 <p>¡Gracias por su preferencia!</p>
             </div>
             </body>
             </html>";
-
+ 
             $dompdf = new \Dompdf\Dompdf();
             $dompdf->loadHtml($html);
             // 80mm is approx 226.77 points. 
@@ -653,8 +653,10 @@ class OrderController {
             $dompdf->setPaper(array(0, 0, 226.77, 800)); 
             $dompdf->render();
             
+            $disposition = (isset($_GET['download']) && $_GET['download'] == 1) ? 'attachment' : 'inline';
+            
             header("Content-Type: application/pdf");
-            header("Content-Disposition: attachment; filename=\"orden_{$order['id']}.pdf\"");
+            header("Content-Disposition: {$disposition}; filename=\"orden_{$order['id']}.pdf\"");
             echo $dompdf->output();
             exit;
         }
@@ -663,7 +665,7 @@ class OrderController {
     }
 
     public function update(): void {
-        AuthMiddleware::handle();
+        $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
         
         $orderId = $data['order_id'] ?? null;
@@ -746,7 +748,6 @@ class OrderController {
             return;
         }
 
-        // Registrar en la cola de impresión (Respaldo por si falla FCM)
         PrintQueueController::addJob('print_request', [
             'order_id' => (string)$orderId
         ]);
@@ -757,6 +758,147 @@ class OrderController {
         ]);
 
         echo json_encode(['message' => 'Print request sent']);
+    }
+
+    public function requestRemoteKitchenPrint(): void {
+        $tempDir = sys_get_temp_dir();
+        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint called\n", FILE_APPEND);
+        AuthMiddleware::handle();
+        $orderId = $_GET['order_id'] ?? null;
+        if (!$orderId) {
+            file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint failed - order_id required\n", FILE_APPEND);
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id required']);
+            return;
+        }
+
+        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: adding job to PrintQueueController for order $orderId\n", FILE_APPEND);
+        PrintQueueController::addJob('print_kitchen_request', [
+            'order_id' => (string)$orderId
+        ]);
+
+        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: Sending FCM notification to new_orders topic for kitchen print order $orderId\n", FILE_APPEND);
+        $fcmResult = NotificationService::sendToTopic('new_orders', 'Imprimir Comanda', "Imprimiendo comanda de cocina...", [
+            'order_id' => (string)$orderId, 
+            'type' => 'print_kitchen_request'
+        ]);
+        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: FCM result: " . ($fcmResult ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
+
+        echo json_encode(['message' => 'Kitchen print request sent']);
+    }
+
+    public function getKitchenPrintData(): void {
+        AuthMiddleware::handle();
+        $orderId = $_GET['order_id'] ?? null;
+        
+        if (!$orderId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'order_id required']);
+            return;
+        }
+
+        $db = Database::getConnection();
+        
+        $stmt = $db->prepare("
+            SELECT o.*, t.number as table_number
+            FROM orders o
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            WHERE o.id = ?
+        ");
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Order not found']);
+            return;
+        }
+
+        $stmtItems = $db->prepare("
+            SELECT oi.*, p.name as product_name
+            FROM order_items oi
+            JOIN products p ON oi.product_id = p.id
+            WHERE oi.order_id = ?
+        ");
+        $stmtItems->execute([$orderId]);
+        $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+
+        if (isset($_GET['raw_html']) && $_GET['raw_html'] == 1) {
+            $isTakeaway = is_null($order['table_number']);
+            $location = $isTakeaway ? "PARA LLEVAR" : "MESA {$order['table_number']}";
+            
+            $html = "
+            <html>
+            <head>
+                <style>
+                    @page { margin: 0; }
+                    * { box-sizing: border-box; }
+                    body { 
+                        font-family: 'Courier New', Courier, monospace; 
+                        font-size: 14px; 
+                        color: #000; 
+                        margin: 0 auto; 
+                        width: 90%; 
+                        padding: 0 5%; 
+                    }
+                    .header { text-align: center; margin-bottom: 10px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+                    .header h2 { margin: 0; font-size: 18px; font-weight: bold; }
+                    .header h3 { margin: 5px 0; font-size: 20px; font-weight: bold; }
+                    .header p { margin: 2px 0; font-size: 12px; }
+                    .info { margin-bottom: 10px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+                    .info p { margin: 4px 0; font-size: 14px; font-weight: bold;}
+                    .table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                    .table td { padding: 6px 0; text-align: left; vertical-align: top; font-size: 16px; font-weight: bold; border-bottom: 1px dashed #ccc;}
+                    .notes { margin-top: 10px; padding-top: 10px; border-top: 2px dashed #000; }
+                    .notes h4 { margin: 0 0 5px 0; font-size: 14px; }
+                    .notes p { margin: 0; font-size: 14px; font-style: italic; }
+                    .footer { text-align: center; margin-top: 20px; font-size: 12px; }
+                </style>
+            </head>
+            <body>
+                <div class='header'>
+                    <h2>COMANDA COCINA</h2>
+                    <h3>{$location}</h3>
+                    <p>Orden #" . ($order['daily_number'] ?? $order['id']) . "</p>
+                    <p>Fecha: " . explode('.', $order['created_at'])[0] . "</p>
+                </div>
+                <div class='info'>
+                    <p>DETALLE DEL PEDIDO:</p>
+                </div>
+                <table class='table'>";
+            
+            foreach ($order['items'] as $item) {
+                $html .= "<tr>
+                            <td style='width: 20%;'>{$item['quantity']}x</td>
+                            <td style='width: 80%;'>{$item['product_name']}";
+                if (!empty($item['notes'])) {
+                    $html .= "<br><span style='font-size: 12px; font-weight: normal; font-style: italic;'>OBS: {$item['notes']}</span>";
+                }
+                $html .= "  </td>
+                          </tr>";
+            }
+            
+            $html .= "</table>";
+ 
+            if (!empty($order['notes'])) {
+                $html .= "<div class='notes'>
+                            <h4>NOTAS GENERALES:</h4>
+                            <p>{$order['notes']}</p>
+                          </div>";
+            }
+ 
+            $html .= "<div class='footer'>
+                <p>------ FIN DE COMANDA ------</p>
+            </div>
+            </body>
+            </html>";
+ 
+            header("Content-Type: text/html");
+            echo $html;
+            exit;
+        }
+
+        echo json_encode($order);
     }
 
     public function cancel(): void {

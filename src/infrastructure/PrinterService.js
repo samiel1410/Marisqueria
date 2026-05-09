@@ -156,6 +156,52 @@ export const handleRemotePrint = async (orderId) => {
   }
 };
 
+export const handleRemoteKitchenPrint = async (orderId) => {
+  const printer = localStorage.getItem('printer_name');
+  const mode = localStorage.getItem('printer_mode') || 'qz';
+
+  console.log(`Processing remote kitchen print request for Order #${orderId}. Mode: ${mode}, Printer: ${printer}`);
+
+  if (mode !== 'qz') {
+    console.warn("Modo de impresión no es QZ Tray.");
+    return;
+  }
+
+  if (!window.qz) {
+    alert("QZ Tray no está cargado en el navegador.");
+    return;
+  }
+
+  if (!printer) {
+    alert("No has configurado ninguna impresora.");
+    return;
+  }
+
+  try {
+    if (!window.qz.websocket.isActive()) {
+      await window.qz.websocket.connect();
+    }
+    
+    const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(printer);
+    const config = isIp 
+      ? window.qz.configs.create({ host: printer, port: 9100 }) 
+      : window.qz.configs.create(printer);
+
+    const response = await api.get(`/orders/print-kitchen?order_id=${orderId}&raw_html=1`, {
+      responseType: 'text'
+    });
+    
+    const htmlData = response.data;
+    const printData = [{ type: 'html', format: 'plain', data: htmlData }];
+    
+    await window.qz.print(config, printData);
+    console.log("Kitchen Print successful");
+  } catch (err) {
+    console.error("QZ Tray remote kitchen print error:", err);
+    alert("Error de impresión de comanda: " + err.message);
+  }
+};
+
 export const handleRemoteCashPrint = async (sessionId) => {
   const printer = localStorage.getItem('printer_name');
   const mode = localStorage.getItem('printer_mode') || 'qz';

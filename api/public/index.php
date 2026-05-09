@@ -118,6 +118,7 @@ $router->add('POST', '/users/update', [\App\Infrastructure\Http\UserController::
 $router->add('POST', '/users/delete', [\App\Infrastructure\Http\UserController::class, 'delete']);
 
 // Customers & Banks
+$router->add('GET', '/customers', [\App\Infrastructure\Http\CustomerController::class, 'index']);
 $router->add('GET', '/customers/lookup', [\App\Infrastructure\Http\CustomerController::class, 'lookup']);
 $router->add('POST', '/customers', [\App\Infrastructure\Http\CustomerController::class, 'store']);
 $router->add('GET', '/banks', [\App\Infrastructure\Http\BankController::class, 'index']);
@@ -139,6 +140,8 @@ $router->add('GET', '/orders/table', [\App\Infrastructure\Http\OrderController::
 $router->add('GET', '/orders/details', [\App\Infrastructure\Http\OrderController::class, 'getDetails']);
 $router->add('GET', '/orders/print', [\App\Infrastructure\Http\OrderController::class, 'getPrintData']);
 $router->add('GET', '/orders/reprint', [\App\Infrastructure\Http\OrderController::class, 'requestRemotePrint']);
+$router->add('GET', '/orders/print-kitchen', [\App\Infrastructure\Http\OrderController::class, 'getKitchenPrintData']);
+$router->add('GET', '/orders/reprint-kitchen', [\App\Infrastructure\Http\OrderController::class, 'requestRemoteKitchenPrint']);
 $router->add('POST', '/orders', [\App\Infrastructure\Http\OrderController::class, 'store']);
 $router->add('POST', '/orders/status', [\App\Infrastructure\Http\OrderController::class, 'updateStatus']);
 $router->add('POST', '/orders/update', [\App\Infrastructure\Http\OrderController::class, 'update']);

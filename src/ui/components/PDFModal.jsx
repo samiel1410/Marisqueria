@@ -49,14 +49,11 @@ export default function PDFModal({ isOpen, onClose, title, pdfUrl }) {
             icon={Printer}
             className="px-10 py-3 rounded-2xl shadow-lg shadow-brand/20"
             onClick={() => {
-                const iframe = document.querySelector('iframe');
-                if (iframe) {
-                    iframe.contentWindow.focus();
-                    iframe.contentWindow.print();
-                }
+                // Open in new tab to avoid CORS restrictions on iframe.print()
+                window.open(pdfUrl, '_blank');
             }}
           >
-            Imprimir Ahora
+            Imprimir Documento
           </Button>
         </div>
       </div>

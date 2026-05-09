@@ -32,14 +32,10 @@ class NotificationService {
             $project_id = "marisqueria-98af1";
             $url = "https://fcm.googleapis.com/v1/projects/$project_id/messages:send";
 
-            // 2. Prepare Message
+            // 2. Prepare Message (Data-only message forces JS delivery)
             $message = [
                 'message' => [
                     'topic' => $topic,
-                    'notification' => [
-                        'title' => $title,
-                        'body' => $body
-                    ],
                     'data' => $data
                 ]
             ];
@@ -64,6 +60,33 @@ class NotificationService {
             if ($httpCode !== 200) {
                 error_log("FCM error response: " . $response);
                 return false;
+            }
+
+            // Enviar adicionalmente al token directo si existe (bypassing topic propagation delay)
+            $tempDir = sys_get_temp_dir();
+            $tokenFile = $tempDir . '/latest_web_token.txt';
+            if (file_exists($tokenFile)) {
+                $directToken = trim(file_get_contents($tokenFile));
+                if (!empty($directToken)) {
+                    $directMessage = [
+                        'message' => [
+                            'token' => $directToken,
+                            'data' => $data
+                        ]
+                    ];
+                    $ch2 = curl_init();
+                    curl_setopt($ch2, CURLOPT_URL, $url);
+                    curl_setopt($ch2, CURLOPT_POST, true);
+                    curl_setopt($ch2, CURLOPT_HTTPHEADER, [
+                        'Authorization: Bearer ' . $accessToken,
+                        'Content-Type: application/json'
+                    ]);
+                    curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($directMessage));
+                    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+                    curl_exec($ch2);
+                    curl_close($ch2);
+                    error_log("FCM: Also sent direct message to token to bypass topic delay");
+                }
             }
 
             return true;
@@ -93,8 +116,13 @@ class NotificationService {
             
             $accessToken = $tokenData['access_token'];
 
-            // Usar el endpoint individual que suele ser más estable con OAuth2
-            $url = "https://iid.googleapis.com/iid/v1/$token/rel/topics/$topic";
+            // Usar el endpoint de batchAdd que soporta OAuth2 correctamente
+            $url = "https://iid.googleapis.com/iid/v1:batchAdd";
+
+            $body = json_encode([
+                'to' => '/topics/' . $topic,
+                'registration_tokens' => [$token]
+            ]);
 
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
@@ -102,13 +130,16 @@ class NotificationService {
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Authorization: Bearer ' . $accessToken,
                 'Content-Type: application/json',
-                'Content-Length: 0'
+                'access_token_auth: true'
             ]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+
+            file_put_contents(__DIR__ . '/../../../../qz_debug.log', date('Y-m-d H:i:s') . " FCM Subscribe Raw Response ($httpCode): " . $response . "\n", FILE_APPEND);
 
             if ($httpCode !== 200) {
                 error_log("FCM Subscribe Error ($topic): Response code $httpCode, response: $response");

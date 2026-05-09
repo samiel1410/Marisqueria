@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getMessaging, onMessage, getToken } from "firebase/messaging";
+import { getMessaging, onMessage, getToken, deleteToken } from "firebase/messaging";
 
 // TODO: Replace with your actual Firebase Web config from the Firebase Console
 const firebaseConfig = {
@@ -16,8 +16,19 @@ import api from "./api";
 const app = initializeApp(firebaseConfig);
 export const messaging = getMessaging(app);
 
-export const requestForToken = () => {
+export const requestForToken = async () => {
   console.log('Requesting FCM token...');
+  
+  try {
+    if (!localStorage.getItem('fcm_token_reset_v3')) {
+      await deleteToken(messaging);
+      localStorage.setItem('fcm_token_reset_v3', 'true');
+      console.log('Old ghost token wiped successfully from IndexedDB.');
+    }
+  } catch (e) {
+    console.log('Error deleting token:', e);
+  }
+
   return getToken(messaging, { vapidKey: 'BHiqvtQxottxOkvDEsSmgN50n0o8yI4qbZKFh6VyboG-yH0LPusRqtVX4PQpMBFgnB094KN5YjAy0DZH3XrDKxI' })
     .then((currentToken) => {
       if (currentToken) {

@@ -107,11 +107,13 @@ const KitchenDisplayPage = () => {
               }`}></span>
             </span>
             <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
-              {fcmStatus === 'active' ? 'EN VIVO' : fcmStatus === 'denied' ? 'NOTIF. BLOQUEADAS' : 'CONECTANDO...'}
+              {fcmStatus === 'active' ? 'EN VIVO' : fcmStatus === 'denied' ? 'NOTIF. BLOQUEADAS' : 'REQUIERE PERMISO'}
             </span>
           </div>
-          {fcmStatus === 'denied' && (
-            <button onClick={requestPermission} className="text-[9px] font-bold text-blue-600 underline text-left">Habilitar Alertas</button>
+          {(fcmStatus === 'denied' || fcmStatus === 'connecting') && (
+            <button onClick={requestPermission} className="text-[10px] font-bold text-blue-600 underline text-left bg-blue-50 px-2 py-1 rounded">
+              Habilitar Alertas (Clic aquí)
+            </button>
           )}
         </div>
         

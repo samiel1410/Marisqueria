@@ -26,6 +26,7 @@ const PrinterSettingsPage = React.lazy(() => import('./ui/pages/PrinterSettingsP
 const WeeklyPlanningPage  = React.lazy(() => import('./ui/pages/WeeklyPlanningPage'));
 const InventoryReportPage = React.lazy(() => import('./ui/pages/InventoryReportPage'));
 const KitchenDisplayPage  = React.lazy(() => import('./ui/pages/KitchenDisplayPage'));
+const CustomersPage       = React.lazy(() => import('./ui/pages/CustomersPage'));
 
 const Lazy = ({ children }) => <React.Suspense fallback={<div className="p-8 text-primary-400">Cargando...</div>}>{children}</React.Suspense>;
 
@@ -67,41 +68,87 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   useEffect(() => {
-    // Only request token if permission is already granted
-    if (Notification.permission === 'granted') {
-      requestForToken();
-    }
+    // Check permission and request token on mount if already granted
+    const initNotifications = async () => {
+      try {
+        let permission = Notification.permission;
+        if (permission === 'granted') {
+          requestForToken();
+        } else {
+          console.warn("Notification permission not granted. Waiting for user to click 'Habilitar Alertas'.");
+        }
+      } catch (err) {
+        console.error("Error checking notification permission:", err);
+      }
+    };
+
+    initNotifications();
 
     // Channel for cross-tab communication
     const channel = new BroadcastChannel('fcm_updates');
 
+    // Variable outside the listener to track recent prints
+    const recentPrints = new Set();
+
     // Listen for foreground messages
     const unsubscribe = onMessage(messaging, (payload) => {
-      console.log('%c FCM RECEIVED in foreground:', 'background: #0088ff; color: white; font-weight: bold;', payload);
+      console.log('======================================================');
+      console.log('🔔 LLEGÓ NOTIFICACIÓN FCM A LA WEB (FOREGROUND):', payload);
+      console.log('TIPO:', payload?.data?.type);
+      console.log('ORDER ID:', payload?.data?.order_id);
+      console.log('======================================================');
       
       // Broadcast to other tabs
-      console.log('Broadcasting to other tabs via channel...');
       channel.postMessage(payload);
       
-      // Handle automatic printing if it's a print request
-      if (payload?.data?.type === 'print_request' && payload?.data?.order_id) {
-        console.log('Triggering remote print for order:', payload.data.order_id);
-        handleRemotePrint(payload.data.order_id);
-      } else if (payload?.data?.type === 'print_cash_request' && payload?.data?.session_id) {
-        import('./infrastructure/PrinterService').then(({ handleRemoteCashPrint }) => {
-          handleRemoteCashPrint(payload.data.session_id);
-        });
-      } else if (payload?.data?.type === 'print_inventory_request') {
-        import('./infrastructure/PrinterService').then(({ handleRemoteInventoryPrint }) => {
-          handleRemoteInventoryPrint(payload.data.filter, payload.data.branch_id);
-        });
+      // Anti-rebote (Debounce) para evitar impresiones dobles del mismo tipo y ID en 10 segundos
+      const printKey = `${payload?.data?.type}_${payload?.data?.order_id || payload?.data?.session_id}`;
+      if (recentPrints.has(printKey)) {
+        console.log('Ignorando petición de impresión duplicada:', printKey);
+      } else {
+        recentPrints.add(printKey);
+        setTimeout(() => recentPrints.delete(printKey), 10000);
+
+        // Handle automatic printing if it's a print request
+        if (payload?.data?.type === 'print_request' && payload?.data?.order_id) {
+          console.log('Triggering remote print for order:', payload.data.order_id);
+          handleRemotePrint(payload.data.order_id);
+        } else if (payload?.data?.type === 'print_kitchen_request' && payload?.data?.order_id) {
+          console.log('Triggering remote kitchen print for order:', payload.data.order_id);
+          import('./infrastructure/PrinterService').then(({ handleRemoteKitchenPrint }) => {
+            handleRemoteKitchenPrint(payload.data.order_id);
+          });
+        } else if (payload?.data?.type === 'print_cash_request' && payload?.data?.session_id) {
+          import('./infrastructure/PrinterService').then(({ handleRemoteCashPrint }) => {
+            handleRemoteCashPrint(payload.data.session_id);
+          });
+        } else if (payload?.data?.type === 'print_inventory_request') {
+          import('./infrastructure/PrinterService').then(({ handleRemoteInventoryPrint }) => {
+            handleRemoteInventoryPrint(payload.data.filter, payload.data.branch_id);
+          });
+        }
       }
 
-      // Show browser notification
+      // Show browser notification if there is a notification block
       if (Notification.permission === 'granted') {
-        new Notification(payload.notification.title, {
-          body: payload.notification.body,
-        });
+        if (payload?.notification) {
+          new Notification(payload.notification.title, {
+            body: payload.notification.body,
+          });
+        } else if (payload?.data && payload?.data?.type) {
+          // Si es un data-only message, mostrar notificación manual amigable
+          let title = "Nueva Notificación";
+          let body = "Hay una nueva actualización en el sistema.";
+          
+          if (payload.data.type === 'print_kitchen_request') {
+            title = "Imprimiendo Comanda";
+            body = "Comanda de cocina enviada a la impresora.";
+          } else if (payload.data.type === 'print_request') {
+            title = "Imprimiendo Ticket";
+            body = "Ticket de venta enviado a la impresora.";
+          }
+          new Notification(title, { body, icon: '/firebase-logo.png' });
+        }
       }
 
       // Dispatch custom event for components to listen in THIS tab
@@ -146,6 +193,7 @@ function App() {
           <Route path="bank-accounts" element={<Lazy><BankAccountsPage /></Lazy>} />
           <Route path="printers" element={<Lazy><PrinterSettingsPage /></Lazy>} />
           <Route path="planning" element={<Lazy><WeeklyPlanningPage /></Lazy>} />
+          <Route path="customers" element={<Lazy><CustomersPage /></Lazy>} />
         </Route>
       </Routes>
     </Router>
