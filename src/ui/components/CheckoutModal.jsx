@@ -151,7 +151,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
@@ -164,7 +164,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
           </button>
         </div>
 
-        <div className="p-8">
+        <div className="p-6 overflow-y-auto flex-1">
           {/* Progress Bar */}
           <div className="flex items-center gap-4 mb-8">
             <div className={`flex-1 h-2 rounded-full transition-all duration-500 ${step >= 1 ? 'bg-sky-500' : 'bg-slate-100'}`} />
@@ -302,30 +302,30 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
               <div className="grid grid-cols-2 gap-4">
                 <button 
                   onClick={() => setPaymentMethod('efectivo')}
-                  className={`flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all ${
+                  className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     paymentMethod === 'efectivo' 
                       ? 'border-sky-500 bg-sky-50/50 text-sky-600 shadow-xl shadow-sky-100' 
                       : 'border-slate-100 hover:border-slate-200 text-slate-400'
                   }`}
                 >
-                  <div className={`p-4 rounded-2xl ${paymentMethod === 'efectivo' ? 'bg-sky-500 text-white' : 'bg-slate-100'}`}>
-                    <Banknote size={32} />
+                  <div className={`p-3 rounded-xl ${paymentMethod === 'efectivo' ? 'bg-sky-500 text-white' : 'bg-slate-100'}`}>
+                    <Banknote size={24} />
                   </div>
-                  <span className="font-bold text-lg">Efectivo</span>
+                  <span className="font-bold text-sm">Efectivo</span>
                 </button>
 
                 <button 
                   onClick={() => setPaymentMethod('transferencia')}
-                  className={`flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all ${
+                  className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     paymentMethod === 'transferencia' 
                       ? 'border-sky-500 bg-sky-50/50 text-sky-600 shadow-xl shadow-sky-100' 
                       : 'border-slate-100 hover:border-slate-200 text-slate-400'
                   }`}
                 >
-                  <div className={`p-4 rounded-2xl ${paymentMethod === 'transferencia' ? 'bg-sky-500 text-white' : 'bg-slate-100'}`}>
-                    <QrCode size={32} />
+                  <div className={`p-3 rounded-xl ${paymentMethod === 'transferencia' ? 'bg-sky-500 text-white' : 'bg-slate-100'}`}>
+                    <QrCode size={24} />
                   </div>
-                  <span className="font-bold text-lg">Transferencia</span>
+                  <span className="font-bold text-sm">Transferencia</span>
                 </button>
 
                 <button 
@@ -334,43 +334,43 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                     setCashPart(order.total / 2);
                     setTransferPart(order.total / 2);
                   }}
-                  className={`flex flex-col items-center gap-4 p-6 rounded-3xl border-2 transition-all ${
+                  className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     paymentMethod === 'mixto' 
                       ? 'border-sky-500 bg-sky-50/50 text-sky-600 shadow-xl shadow-sky-100' 
                       : 'border-slate-100 hover:border-slate-200 text-slate-400'
                   }`}
                 >
-                  <div className={`p-4 rounded-2xl ${paymentMethod === 'mixto' ? 'bg-sky-500 text-white' : 'bg-slate-100'}`}>
-                    <CreditCard size={32} />
+                  <div className={`p-3 rounded-xl ${paymentMethod === 'mixto' ? 'bg-sky-500 text-white' : 'bg-slate-100'}`}>
+                    <CreditCard size={24} />
                   </div>
-                  <span className="font-bold text-lg">Mixto</span>
+                  <span className="font-bold text-sm">Mixto</span>
                 </button>
               </div>
 
               {paymentMethod === 'efectivo' && (
-                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-200">
-                  <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200/60">
-                    <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total a Cobrar</span>
-                    <span className="text-2xl font-black text-slate-800">${(Number(order.total) - Number(order.total_paid || 0)).toFixed(2)}</span>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total a Cobrar</span>
+                    <span className="text-xl font-black text-slate-800">${(Number(order.total) - Number(order.total_paid || 0)).toFixed(2)}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Dinero Recibido</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Dinero Recibido</label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                         <input 
                           type="number" 
                           value={tenderedAmount}
                           onChange={e => setTenderedAmount(e.target.value)}
                           placeholder={(Number(order.total) - Number(order.total_paid || 0)).toFixed(2)}
-                          className="w-full pl-8 pr-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all font-bold text-xl text-slate-700 bg-white shadow-sm"
+                          className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-slate-200 focus:ring-4 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all font-bold text-lg text-slate-700 bg-white"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Vuelto / Cambio</label>
-                      <div className="relative h-[54px] bg-white border border-slate-200 rounded-2xl flex items-center px-4 shadow-sm">
-                        <span className={`font-black text-2xl ${
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 ml-1">Vuelto / Cambio</label>
+                      <div className="h-[46px] bg-white border border-slate-200 rounded-xl flex items-center px-3">
+                        <span className={`font-black text-xl ${
                           (Number(tenderedAmount || (Number(order.total) - Number(order.total_paid || 0))) - (Number(order.total) - Number(order.total_paid || 0))) >= 0 
                             ? 'text-emerald-500' 
                             : 'text-red-500'
