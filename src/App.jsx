@@ -72,10 +72,11 @@ function App() {
     const initNotifications = async () => {
       try {
         let permission = Notification.permission;
-        if (permission === 'granted' || permission === 'default') {
+        if (permission === 'granted') {
           requestForToken();
-        } else {
-          console.warn("Notification permission was DENIED by the user.");
+        } else if (permission === 'default') {
+          console.warn("FCM: Permission is 'default'. User must click to enable.");
+          // We can't request automatically in some browsers, so we rely on the UI buttons
         }
       } catch (err) {
         console.error("Error checking notification permission:", err);

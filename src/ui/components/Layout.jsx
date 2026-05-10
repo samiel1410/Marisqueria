@@ -161,14 +161,14 @@ const Layout = () => {
               onClick={() => {
                 Notification.requestPermission().then(permission => {
                   if (permission === 'granted') {
-                    import('../../infrastructure/firebase').then(m => m.requestForToken());
+                    window.location.reload(); // Reload to trigger FCM initialization
                   }
                 });
               }}
-              className="flex items-center gap-3 px-4 py-2 rounded-2xl text-brand font-semibold hover:bg-brand/5 transition-colors w-full text-sm"
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 hover:bg-orange-600 transition-all w-full text-sm animate-pulse"
             >
               <Award size={18} />
-              Activar Avisos
+              HABILITAR ALERTAS
             </button>
           )}
 
