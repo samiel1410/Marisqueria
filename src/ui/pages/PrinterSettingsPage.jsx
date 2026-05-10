@@ -89,7 +89,7 @@ const PrinterSettingsPage = () => {
         format: 'html',
         flavor: 'plain',
         data: `
-          <div style="font-family: 'Courier New', Courier, monospace; width: 58mm; margin: 0 auto; text-align: center; border: 1px dashed #ccc; padding: 5px 2mm; box-sizing: border-box;">
+          <div style="font-family: 'Courier New', Courier, monospace; width: 48mm; margin: 0; text-align: center; border: 1px dashed #ccc; padding: 5px 1mm 5px 3mm; box-sizing: border-box;">
             <h3 style="margin: 0; font-size: 16px;">KRUSTACIO KASCARUDO</h3>
             <p style="margin: 5px 0; font-size: 12px; font-weight: bold;">PRUEBA DE CONEXIÓN</p>
             <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>

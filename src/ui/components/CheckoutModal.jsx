@@ -35,6 +35,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
   const [cashPart, setCashPart] = useState(0);
   const [transferPart, setTransferPart] = useState(0);
   const [selectedBankId, setSelectedBankId] = useState(null);
+  const [tenderedAmount, setTenderedAmount] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +48,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
       setCashPart(balance);
       setTransferPart(0);
       setSelectedBankId(null);
+      setTenderedAmount('');
       fetchBanks();
     }
   }, [isOpen, order]);
@@ -108,6 +110,11 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
       return;
     }
     
+    if (paymentMethod === 'efectivo' && tenderedAmount !== '' && Number(tenderedAmount) < balance) {
+      alert("El monto recibido no cubre el total a cobrar.");
+      return;
+    }
+
     if (amountThisTime <= 0) {
       alert("El monto debe ser mayor a 0");
       return;
@@ -339,6 +346,42 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                   <span className="font-bold text-lg">Mixto</span>
                 </button>
               </div>
+
+              {paymentMethod === 'efectivo' && (
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-200">
+                  <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200/60">
+                    <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total a Cobrar</span>
+                    <span className="text-2xl font-black text-slate-800">${(Number(order.total) - Number(order.total_paid || 0)).toFixed(2)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Dinero Recibido</label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
+                        <input 
+                          type="number" 
+                          value={tenderedAmount}
+                          onChange={e => setTenderedAmount(e.target.value)}
+                          placeholder={(Number(order.total) - Number(order.total_paid || 0)).toFixed(2)}
+                          className="w-full pl-8 pr-4 py-3 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-sky-500/10 focus:border-sky-500 outline-none transition-all font-bold text-xl text-slate-700 bg-white shadow-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Vuelto / Cambio</label>
+                      <div className="relative h-[54px] bg-white border border-slate-200 rounded-2xl flex items-center px-4 shadow-sm">
+                        <span className={`font-black text-2xl ${
+                          (Number(tenderedAmount || (Number(order.total) - Number(order.total_paid || 0))) - (Number(order.total) - Number(order.total_paid || 0))) >= 0 
+                            ? 'text-emerald-500' 
+                            : 'text-red-500'
+                        }`}>
+                          ${Math.max(0, (Number(tenderedAmount || (Number(order.total) - Number(order.total_paid || 0))) - (Number(order.total) - Number(order.total_paid || 0)))).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {paymentMethod === 'mixto' && (
                 <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-bottom-2 duration-200">

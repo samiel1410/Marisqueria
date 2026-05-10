@@ -414,9 +414,9 @@ class CashController extends BaseController {
                         font-family: 'Courier New', Courier, monospace; 
                         font-size: 10px; 
                         color: #000; 
-                        margin: 0 auto;
-                        width: 58mm;
-                        padding: 0 2mm;
+                        margin: 0;
+                        width: 48mm;
+                        padding: 0 1mm 0 3mm;
                     }
                     .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
                     .header h2 { margin: 0; font-size: 14px; }
