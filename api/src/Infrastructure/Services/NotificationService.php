@@ -44,6 +44,9 @@ class NotificationService {
             $project_id = "marisqueria-98af1";
             $url = "https://fcm.googleapis.com/v1/projects/$project_id/messages:send";
 
+            $originHost = $_SERVER['HTTP_HOST'] ?? 'unknown';
+            $data['origin_host'] = $originHost;
+
             // 2. Prepare Message (Topic)
             $message = [
                 'message' => [

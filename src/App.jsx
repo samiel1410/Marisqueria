@@ -92,11 +92,20 @@ function App() {
 
     // Listen for foreground messages
     const unsubscribe = onMessage(messaging, (payload) => {
+      const { type, order_id, origin_host } = payload.data || {};
+
       console.log('======================================================');
       console.log('🔔 LLEGÓ NOTIFICACIÓN FCM A LA WEB (FOREGROUND):', payload);
-      console.log('TIPO:', payload?.data?.type);
-      console.log('ORDER ID:', payload?.data?.order_id);
+      console.log('TIPO:', type);
+      console.log('ORDER ID:', order_id);
+      console.log('ORIGIN:', origin_host);
       console.log('======================================================');
+      
+      // Filter by origin_host to avoid cross-environment triggers (dev vs prod)
+      if (origin_host && origin_host !== window.location.host) {
+        console.warn(`[FCM] Ignorando mensaje de otro entorno (${origin_host}). Nosotros somos: ${window.location.host}`);
+        return;
+      }
       
       // Broadcast to other tabs
       channel.postMessage(payload);
@@ -110,19 +119,19 @@ function App() {
         setTimeout(() => recentPrints.delete(printKey), 10000);
 
         // Handle automatic printing if it's a print request
-        if (payload?.data?.type === 'print_request' && payload?.data?.order_id) {
-          console.log('Triggering remote print for order:', payload.data.order_id);
-          handleRemotePrint(payload.data.order_id);
-        } else if (payload?.data?.type === 'print_kitchen_request' && payload?.data?.order_id) {
-          console.log('Triggering remote kitchen print for order:', payload.data.order_id);
+        if (type === 'print_request' && order_id) {
+          console.log('Triggering remote print for order:', order_id);
+          handleRemotePrint(order_id);
+        } else if (type === 'print_kitchen_request' && order_id) {
+          console.log('Triggering remote kitchen print for order:', order_id);
           import('./infrastructure/PrinterService').then(({ handleRemoteKitchenPrint }) => {
-            handleRemoteKitchenPrint(payload.data.order_id);
+            handleRemoteKitchenPrint(order_id);
           });
-        } else if (payload?.data?.type === 'print_cash_request' && payload?.data?.session_id) {
+        } else if (type === 'print_cash_request' && payload?.data?.session_id) {
           import('./infrastructure/PrinterService').then(({ handleRemoteCashPrint }) => {
             handleRemoteCashPrint(payload.data.session_id);
           });
-        } else if (payload?.data?.type === 'print_inventory_request') {
+        } else if (type === 'print_inventory_request') {
           import('./infrastructure/PrinterService').then(({ handleRemoteInventoryPrint }) => {
             handleRemoteInventoryPrint(payload.data.filter, payload.data.branch_id);
           });
