@@ -94,23 +94,35 @@ class BankController {
         }
 
         $id = $_POST['id'];
-        $file = $_FILES['qr'];
-        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $fileName = "qr_bank_" . $id . "_" . time() . "." . $ext;
-        $uploadDir = __DIR__ . "/../../../public/uploads/qrs/";
-        
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
-        }
+        $path = $this->uploadQrFile($_FILES['qr'], $id);
 
-        if (move_uploaded_file($file['tmp_name'], $uploadDir . $fileName)) {
+        if ($path) {
             $db = Database::getConnection();
-            $path = "/uploads/qrs/" . $fileName;
             $db->prepare("UPDATE bank_accounts SET qr_path = ? WHERE id = ?")->execute([$path, $id]);
             echo json_encode(['message' => 'QR uploaded', 'path' => $path]);
         } else {
             http_response_code(500);
-            echo json_encode(['error' => 'Failed to move uploaded file']);
+            echo json_encode(['error' => 'Failed to process QR upload']);
         }
+    }
+
+    private function uploadQrFile(array $file, $id): ?string {
+        $uploadDir = __DIR__ . "/../../../public/uploads/qrs/";
+        if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
+
+        // Fallback to Base64 if not writable
+        if (!@is_writable($uploadDir)) {
+            $imageData = file_get_contents($file['tmp_name']);
+            $mimeType = mime_content_type($file['tmp_name']);
+            return 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+        }
+
+        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $fileName = "qr_bank_" . $id . "_" . time() . "." . $ext;
+        
+        if (move_uploaded_file($file['tmp_name'], $uploadDir . $fileName)) {
+            return "/uploads/qrs/" . $fileName;
+        }
+        return null;
     }
 }
