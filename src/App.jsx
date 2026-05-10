@@ -72,10 +72,10 @@ function App() {
     const initNotifications = async () => {
       try {
         let permission = Notification.permission;
-        if (permission === 'granted') {
+        if (permission === 'granted' || permission === 'default') {
           requestForToken();
         } else {
-          console.warn("Notification permission not granted. Waiting for user to click 'Habilitar Alertas'.");
+          console.warn("Notification permission was DENIED by the user.");
         }
       } catch (err) {
         console.error("Error checking notification permission:", err);
