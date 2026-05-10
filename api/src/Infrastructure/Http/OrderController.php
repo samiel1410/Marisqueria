@@ -111,7 +111,11 @@ class OrderController {
                 'new_orders', 
                 $notifTitle, 
                 $notifBody, 
-                ['order_id' => (string)$orderId, 'table_id' => (string)$data['table_id']]
+                [
+                    'order_id' => (string)$orderId, 
+                    'table_id' => (string)($data['table_id'] ?? ''),
+                    'type' => 'print_kitchen_request'
+                ]
             );
             
             // Get daily number to return it (either newly created or from existing)
@@ -780,28 +784,33 @@ class OrderController {
     }
 
     public function requestRemoteKitchenPrint(): void {
-        $tempDir = sys_get_temp_dir();
-        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint called\n", FILE_APPEND);
+        $storageDir = __DIR__ . '/../../../scratch';
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0777, true);
+        }
+        $logFile = $storageDir . '/qz_debug.log';
+        
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint called\n", FILE_APPEND);
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
         if (!$orderId) {
-            file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint failed - order_id required\n", FILE_APPEND);
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint failed - order_id required\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'order_id required']);
             return;
         }
 
-        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: adding job to PrintQueueController for order $orderId\n", FILE_APPEND);
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: adding job for order $orderId\n", FILE_APPEND);
         PrintQueueController::addJob('print_kitchen_request', [
             'order_id' => (string)$orderId
         ]);
 
-        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: Sending FCM notification to new_orders topic for kitchen print order $orderId\n", FILE_APPEND);
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Sending FCM notification for kitchen print order $orderId\n", FILE_APPEND);
         $fcmResult = NotificationService::sendToTopic('new_orders', 'Imprimir Comanda', "Imprimiendo comanda de cocina...", [
             'order_id' => (string)$orderId, 
             'type' => 'print_kitchen_request'
         ]);
-        file_put_contents($tempDir . '/qz_debug.log', date('Y-m-d H:i:s') . " BACKEND: FCM result: " . ($fcmResult ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: FCM result: " . ($fcmResult ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
 
         echo json_encode(['message' => 'Kitchen print request sent']);
     }
