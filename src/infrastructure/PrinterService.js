@@ -84,9 +84,9 @@ export const handleRemotePrint = async (orderId) => {
         type: 'pixel',
         format: 'html',
         flavor: 'plain',
-        options: { pageWidth: 2.28, units: 'in' },
+        options: { pageWidth: 2.0, units: 'in' },
         data: `
-          <div style="font-family: 'Courier New', Courier, monospace; width: 58mm; margin: 0 auto; padding: 0 2mm; font-size: 10px; color: #000; box-sizing: border-box;">
+          <div style="font-family: 'Courier New', Courier, monospace; width: 48mm; margin: 0; padding: 0 1mm 0 3mm; font-size: 10px; color: #000; box-sizing: border-box;">
             <div style="text-align: center; margin-bottom: 10px;">
               <h2 style="margin: 0; font-size: 16px; font-weight: bold;">KRUSTACIO KASCARUDO</h2>
               <p style="margin: 0; font-size: 11px;">Nota de Venta</p>
@@ -194,7 +194,7 @@ export const handleRemoteKitchenPrint = async (orderId) => {
     });
     
     const htmlData = response.data;
-    const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', data: htmlData }];
+    const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', options: { pageWidth: 2.0, units: 'in' }, data: htmlData }];
     
     await window.qz.print(config, printData);
     console.log("Kitchen Print successful");
@@ -226,7 +226,7 @@ export const handleRemoteCashPrint = async (sessionId) => {
       });
       
       const htmlData = response.data;
-      const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', data: htmlData }];
+      const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', options: { pageWidth: 2.0, units: 'in' }, data: htmlData }];
       await window.qz.print(config, printData);
       console.log("HTML Print successful");
     } catch (err) {
@@ -259,7 +259,7 @@ export const handleRemoteInventoryPrint = async (filter, branchId) => {
       });
       
       const htmlData = response.data;
-      const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', data: htmlData }];
+      const printData = [{ type: 'pixel', format: 'html', flavor: 'plain', options: { pageWidth: 2.0, units: 'in' }, data: htmlData }];
       await window.qz.print(config, printData);
       console.log("Inventory Print successful");
     } catch (err) {

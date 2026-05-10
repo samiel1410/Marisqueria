@@ -566,9 +566,9 @@ class OrderController {
                         font-family: 'Courier New', Courier, monospace; 
                         font-size: 10px; 
                         color: #000; 
-                        margin: 0 auto; 
-                        width: 58mm; 
-                        padding: 0 2mm; 
+                        margin: 0; 
+                        width: 48mm; 
+                        padding: 0 1mm 0 3mm; 
                     }
                     .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
                     .header h2 { margin: 0; font-size: 16px; font-weight: bold; }
@@ -836,9 +836,9 @@ class OrderController {
                         font-family: 'Courier New', Courier, monospace; 
                         font-size: 12px; 
                         color: #000; 
-                        margin: 0 auto; 
-                        width: 58mm; 
-                        padding: 0 2mm; 
+                        margin: 0; 
+                        width: 48mm; 
+                        padding: 0 1mm 0 3mm; 
                     }
                     .header { text-align: center; margin-bottom: 10px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
                     .header h2 { margin: 0; font-size: 18px; font-weight: bold; }
