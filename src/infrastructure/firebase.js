@@ -17,32 +17,38 @@ const app = initializeApp(firebaseConfig);
 export const messaging = getMessaging(app);
 
 export const requestForToken = async () => {
-  console.log('Requesting FCM token...');
+  console.log('%c[FCM]%c Requesting token...', 'color: #3b82f6; font-weight: bold;', '');
   
   try {
-    if (!localStorage.getItem('fcm_token_reset_v3')) {
+    if (!localStorage.getItem('fcm_token_reset_v4')) {
       await deleteToken(messaging);
-      localStorage.setItem('fcm_token_reset_v3', 'true');
-      console.log('Old ghost token wiped successfully from IndexedDB.');
+      localStorage.setItem('fcm_token_reset_v4', 'true');
+      console.log('%c[FCM]%c Old ghost token wiped successfully.', 'color: #3b82f6; font-weight: bold;', '');
     }
   } catch (e) {
-    console.log('Error deleting token:', e);
+    console.log('%c[FCM]%c Error deleting token:', 'color: #ef4444; font-weight: bold;', '', e);
   }
 
   return getToken(messaging, { vapidKey: 'BHiqvtQxottxOkvDEsSmgN50n0o8yI4qbZKFh6VyboG-yH0LPusRqtVX4PQpMBFgnB094KN5YjAy0DZH3XrDKxI' })
     .then((currentToken) => {
       if (currentToken) {
-        console.log('FCM Token generated successfully');
+        console.log('%c[FCM]%c Token obtained:', 'color: #10b981; font-weight: bold;', '', currentToken.substring(0, 10) + '...');
         // Send token to server to subscribe to topics
         api.post('/notifications/subscribe', { token: currentToken, topic: 'new_orders' })
-          .then(() => console.log('Successfully subscribed to new_orders'))
-          .catch(err => console.error('Error subscribing to topic:', err));
+          .then(() => console.log('%c[FCM]%c Successfully subscribed to new_orders', 'color: #10b981; font-weight: bold;', ''))
+          .catch(err => {
+            console.error('%c[FCM]%c Error subscribing to topic:', 'color: #ef4444; font-weight: bold;', '', err);
+            // Si falla la suscripción, avisamos que el tiempo real podría estar afectado
+            window.dispatchEvent(new CustomEvent('fcm-status', { detail: 'error_subscription' }));
+          });
       } else {
-        console.warn('No registration token available.');
+        console.warn('%c[FCM]%c No registration token available.', 'color: #f59e0b; font-weight: bold;', '');
+        window.dispatchEvent(new CustomEvent('fcm-status', { detail: 'no_token' }));
       }
     })
     .catch((err) => {
-      console.error('An error occurred while retrieving token:', err);
+      console.error('%c[FCM]%c Retrieval error:', 'color: #ef4444; font-weight: bold;', '', err);
+      window.dispatchEvent(new CustomEvent('fcm-status', { detail: 'error' }));
     });
 };
 

@@ -48,8 +48,18 @@ const KitchenDisplayPage = () => {
       fetchOrders();
     };
 
+    const handleFCMStatus = (e) => {
+      console.log('%c Kitchen: FCM STATUS', 'background: #3b82f6; color: white; font-weight: bold;', e.detail);
+      setFcmStatus(e.detail);
+    };
+
     window.addEventListener('fcm-message', handleFCMMessage);
-    return () => window.removeEventListener('fcm-message', handleFCMMessage);
+    window.addEventListener('fcm-status', handleFCMStatus);
+
+    return () => {
+      window.removeEventListener('fcm-message', handleFCMMessage);
+      window.removeEventListener('fcm-status', handleFCMStatus);
+    };
   }, [fetchOrders]);
 
   const requestPermission = async () => {
@@ -98,19 +108,30 @@ const KitchenDisplayPage = () => {
           <div className="flex items-center gap-2 bg-gray-900 px-4 py-2 rounded-2xl border border-gray-800">
             <span className="relative flex h-3 w-3">
               {fcmStatus === 'active' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${
-                fcmStatus === 'active' ? 'bg-emerald-400' : fcmStatus === 'denied' ? 'bg-red-500' : 'bg-amber-400'
+            <span className={`relative inline-flex rounded-full h-3 w-3 ${
+                fcmStatus === 'active' ? 'bg-emerald-400' : 
+                fcmStatus === 'denied' || fcmStatus === 'error' ? 'bg-red-500' : 'bg-amber-400'
               }`}></span>
             </span>
             <span className="text-sm font-black uppercase tracking-widest text-gray-300">
-              {fcmStatus === 'active' ? 'EN VIVO' : fcmStatus === 'denied' ? 'BLOQUEADO' : 'SIN PERMISOS'}
+              {fcmStatus === 'active' ? 'EN VIVO' : 
+               fcmStatus === 'denied' ? 'BLOQUEADO' : 
+               fcmStatus === 'error' ? 'ERROR FCM' : 
+               fcmStatus === 'error_subscription' ? 'ERROR SYNC' :
+               fcmStatus === 'no_token' ? 'SIN TOKEN' : 'CONECTANDO...'}
             </span>
-            {(fcmStatus === 'denied' || fcmStatus === 'connecting') && (
+            {(fcmStatus === 'denied' || fcmStatus === 'connecting' || fcmStatus.includes('error') || fcmStatus === 'no_token') && (
               <button
-                onClick={requestPermission}
+                onClick={() => {
+                  if (Notification.permission === 'default') {
+                    requestPermission();
+                  } else {
+                    requestForToken();
+                  }
+                }}
                 className="ml-2 text-xs font-black text-amber-400 underline uppercase"
               >
-                Activar
+                {fcmStatus === 'active' ? '' : 'Reintentar'}
               </button>
             )}
           </div>

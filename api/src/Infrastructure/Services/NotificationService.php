@@ -21,24 +21,30 @@ class NotificationService {
         }
 
         try {
-            error_log("FCM: Sending notification to topic $topic");
+            $storageDir = __DIR__ . '/../../../scratch';
+            if (!is_dir($storageDir)) {
+                mkdir($storageDir, 0777, true);
+            }
+            $logFile = $storageDir . '/qz_debug.log';
+
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Sending notification to topic $topic\n", FILE_APPEND);
+            
             // 1. Get OAuth2 Access Token
             $scopes = ['https://www.googleapis.com/auth/cloud-platform'];
             $jsonContent = json_decode(file_get_contents($serviceAccountPath), true);
             
-            // Asegurar que la clave privada tenga el formato correcto
             if (isset($jsonContent['private_key'])) {
                 $jsonContent['private_key'] = str_replace("\\n", "\n", $jsonContent['private_key']);
             }
             
             $credentials = new ServiceAccountCredentials($scopes, $jsonContent);
-            $token = $credentials->fetchAuthToken(HttpHandlerFactory::build());
-            $accessToken = $token['access_token'];
+            $tokenData = $credentials->fetchAuthToken(HttpHandlerFactory::build());
+            $accessToken = $tokenData['access_token'];
 
             $project_id = "marisqueria-98af1";
             $url = "https://fcm.googleapis.com/v1/projects/$project_id/messages:send";
 
-            // 2. Prepare Message (Data-only message forces JS delivery)
+            // 2. Prepare Message (Topic)
             $message = [
                 'message' => [
                     'topic' => $topic,
@@ -46,7 +52,7 @@ class NotificationService {
                 ]
             ];
 
-            // 3. Send HTTP Request
+            // 3. Send HTTP Request to Topic
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -61,25 +67,23 @@ class NotificationService {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            error_log("FCM: Response code $httpCode, response: $response");
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Topic response code $httpCode\n", FILE_APPEND);
 
-            if ($httpCode !== 200) {
-                error_log("FCM error response: " . $response);
-                return false;
-            }
-
-            // Enviar adicionalmente al token directo si existe (bypassing topic propagation delay)
-            $tempDir = sys_get_temp_dir();
-            $tokenFile = $tempDir . '/latest_web_token.txt';
-            if (file_exists($tokenFile)) {
-                $directToken = trim(file_get_contents($tokenFile));
-                if (!empty($directToken)) {
+            // 4. Enviar a tokens directos (bypassing topic delay)
+            $tokensFile = $storageDir . '/web_tokens.json';
+            if (file_exists($tokensFile)) {
+                $directTokens = json_decode(file_get_contents($tokensFile), true) ?: [];
+                $sentCount = 0;
+                foreach ($directTokens as $directToken) {
+                    if (empty($directToken)) continue;
+                    
                     $directMessage = [
                         'message' => [
                             'token' => $directToken,
                             'data' => $data
                         ]
                     ];
+                    
                     $ch2 = curl_init();
                     curl_setopt($ch2, CURLOPT_URL, $url);
                     curl_setopt($ch2, CURLOPT_POST, true);
@@ -89,13 +93,18 @@ class NotificationService {
                     ]);
                     curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($directMessage));
                     curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch2, CURLOPT_TIMEOUT, 2); // Timeout corto para no bloquear
+                    
                     curl_exec($ch2);
+                    $dCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
                     curl_close($ch2);
-                    error_log("FCM: Also sent direct message to token to bypass topic delay");
+                    
+                    if ($dCode === 200) $sentCount++;
                 }
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Sent to $sentCount direct tokens\n", FILE_APPEND);
             }
 
-            return true;
+            return $httpCode === 200;
         } catch (\Exception $e) {
             error_log("FCM Exception: " . $e->getMessage());
             return false;
@@ -151,7 +160,10 @@ class NotificationService {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            file_put_contents(__DIR__ . '/../../../../qz_debug.log', date('Y-m-d H:i:s') . " FCM Subscribe Raw Response ($httpCode): " . $response . "\n", FILE_APPEND);
+            $storageDir = __DIR__ . '/../../../scratch';
+            if (is_dir($storageDir)) {
+                file_put_contents($storageDir . '/qz_debug.log', date('Y-m-d H:i:s') . " FCM Subscribe Raw Response ($httpCode): " . $response . "\n", FILE_APPEND);
+            }
 
             if ($httpCode !== 200) {
                 error_log("FCM Subscribe Error ($topic): Response code $httpCode, response: $response");
