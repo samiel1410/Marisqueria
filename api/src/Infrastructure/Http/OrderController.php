@@ -314,6 +314,10 @@ class OrderController {
     }
 
     public function updateStatus(): void {
+        $storageDir = __DIR__ . '/../../../scratch';
+        $logFile = $storageDir . '/qz_debug.log';
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() called\n", FILE_APPEND);
+
         $user = AuthMiddleware::handle();
         
         $contentType = isset($_SERVER["CONTENT_TYPE"]) ? trim($_SERVER["CONTENT_TYPE"]) : '';
@@ -324,73 +328,30 @@ class OrderController {
         }
         
         if (empty($data['order_id']) || empty($data['status'])) {
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() failed - missing order_id or status\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'order_id and status are required']);
             return;
         }
 
-        $receiptPath = null;
-        if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
-            $uploadDir = __DIR__ . '/../../../public/uploads/receipts/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
-            $ext = pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION);
-            $fileName = 'receipt_' . $data['order_id'] . '_' . time() . '.' . $ext;
-            $destination = $uploadDir . $fileName;
-            
-            if (move_uploaded_file($_FILES['receipt']['tmp_name'], $destination)) {
-                $receiptPath = 'uploads/receipts/' . $fileName;
-            }
-        }
-
         $db = Database::getConnection();
-        
         try {
             $db->beginTransaction();
-
+            
             $stmt = $db->prepare("SELECT * FROM orders WHERE id = ?");
             $stmt->execute([$data['order_id']]);
             $orderDataFull = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$orderDataFull) throw new Exception("Order #{$data['order_id']} not found");
+            
             $currentStatus = $orderDataFull['status'];
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order #{$data['order_id']} moving from $currentStatus to {$data['status']}\n", FILE_APPEND);
 
-            if (!$currentStatus) {
-                throw new Exception("Order not found");
-            }
-
-            // --- Lógica de Anulación de Cobro ---
-            if ($currentStatus === 'cobrado' && $data['status'] !== 'cobrado') {
-                $db->prepare("DELETE FROM order_payments WHERE order_id = ?")->execute([$data['order_id']]);
-                $db->prepare("UPDATE orders SET 
-                    payment_method = NULL, 
-                    cash_amount = NULL, 
-                    transfer_amount = NULL, 
-                    bank_account_id = NULL,
-                    receipt_image = NULL
-                    WHERE id = ?")
-                   ->execute([$data['order_id']]);
-
-                // Re-ocupar mesa si estaba asociada a una
-                $stmtTable = $db->prepare("SELECT table_id FROM orders WHERE id = ?");
-                $stmtTable->execute([$data['order_id']]);
-                $tableId = $stmtTable->fetchColumn();
-                if ($tableId) {
-                    $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?")->execute([$tableId]);
-                }
-            }
-
-            // If moving TO 'en cocina' from 'pendiente', discount stock
-            if ($currentStatus === 'pendiente' && $data['status'] === 'en cocina') {
-                $stmtItems = $db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
-                $stmtItems->execute([$data['order_id']]);
-                $items = $stmtItems->fetchAll();
-
-                foreach ($items as $item) {
-                    $stmtUpdateStock = $db->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND manages_inventory = 1");
-                    $stmtUpdateStock->execute([$item['quantity'], $item['product_id']]);
-                }
-
-                // Notificar al mesero que su orden empezó a prepararse
+            // If moving to 'en cocina', notify the kitchen
+            if ($data['status'] === 'en cocina' && $currentStatus === 'pendiente') {
+                NotificationService::sendToTopic('kitchen_orders', 'Nuevo Pedido', "Nuevo pedido listo para preparar", ['order_id' => (string)$data['order_id'], 'type' => 'new_order']);
+                
+                // Also notify the waiter
                 $stmtWaiter = $db->prepare("SELECT user_id, table_id FROM orders WHERE id = ?");
                 $stmtWaiter->execute([$data['order_id']]);
                 $orderData = $stmtWaiter->fetch();
@@ -409,14 +370,14 @@ class OrderController {
                 }
             }
 
-            // If 'cancelado', revert stock if it was already deducted
+            // If 'cancelado', revert stock
             if ($data['status'] === 'cancelado' && in_array($currentStatus, ['en cocina', 'entregado'])) {
                 $stmtItems = $db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
                 $stmtItems->execute([$data['order_id']]);
                 $items = $stmtItems->fetchAll();
                 foreach ($items as $item) {
-                    $stmtUpdateStock = $db->prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND manages_inventory = 1");
-                    $stmtUpdateStock->execute([$item['quantity'], $item['product_id']]);
+                    $db->prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND manages_inventory = 1")
+                       ->execute([$item['quantity'], $item['product_id']]);
                 }
             }
 
@@ -430,7 +391,8 @@ class OrderController {
                 $customerId = $data['customer_id'] ?? null;
                 $amountPaidThisTime = (float)($data['amount'] ?? 0);
 
-                // Registrar pagos en la nueva tabla
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Processing payment for #{$data['order_id']} ($paymentMethod)\n", FILE_APPEND);
+
                 if ($paymentMethod === 'mixto') {
                     if ($cashAmount > 0) {
                         $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
@@ -451,68 +413,53 @@ class OrderController {
                     }
                 }
 
-                // Calcular total pagado acumulado
                 $stmtSum = $db->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = ?");
                 $stmtSum->execute([$data['order_id']]);
                 $totalPaid = (float)$stmtSum->fetchColumn();
 
                 $orderTotal = (float)$orderDataFull['total'];
-                if ($totalPaid < $orderTotal - 0.01) {
-                    $newStatus = 'parcial';
-                } else {
-                    $newStatus = 'cobrado';
-                }
+                $newStatus = ($totalPaid < $orderTotal - 0.01) ? 'parcial' : 'cobrado';
 
-                // Actualizar orden con el nuevo estado y campos de referencia (opcional)
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order #{$data['order_id']} final status: $newStatus (Paid: $totalPaid / Total: $orderTotal)\n", FILE_APPEND);
+
                 $db->prepare("UPDATE orders SET status = ?, payment_method = ?, customer_id = ?, bank_account_id = ?, cash_amount = ?, transfer_amount = ?, updated_by = ? WHERE id = ?")
                    ->execute([$newStatus, $paymentMethod, $customerId, $bankId, $cashAmount, $transferAmount, $user->id, $data['order_id']]);
             } else {
                 $db->prepare("UPDATE orders SET status = ?, updated_by = ? WHERE id = ?")->execute([$newStatus, $user->id, $data['order_id']]);
             }
 
-            // Liberar mesa solo si aplica
+            // Liberar mesa
             if (($newStatus === 'cobrado' || $newStatus === 'cancelado') && $orderDataFull['table_id']) {
                 $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$orderDataFull['table_id']]);
-                
-                // Notificaciones de mesa libre
-                NotificationService::sendToTopic('new_orders', 'Mesa Liberada', "La mesa asociada a la orden #{$data['order_id']} ahora está disponible.", ['order_id' => (string)$data['order_id'], 'table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
-                NotificationService::sendToTopic('table_updates', 'Mesa Disponible', "Mesa disponible", ['table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
+                NotificationService::sendToTopic('new_orders', 'Mesa Liberada', "Mesa disponible", ['order_id' => (string)$data['order_id'], 'type' => 'table_available']);
             }
 
-            // Disparar impresión automática al cobrar (con o sin mesa: aplica también a pedidos Para Llevar)
+            // Impresión automática al cobrar
             if ($newStatus === 'cobrado') {
-                PrintQueueController::addJob('print_request', [
-                    'order_id' => (string)$data['order_id']
-                ]);
+                PrintQueueController::addJob('print_request', ['order_id' => (string)$data['order_id']]);
                 NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string)$data['order_id'], 'type' => 'print_request']);
             }
 
-            // ... (rest of updateStatus logic)
-            // If 'entregado', notify the waiter
+            // Notificar al mesero si está listo
             if ($data['status'] === 'entregado') {
                 $stmtWaiter = $db->prepare("SELECT user_id, table_id FROM orders WHERE id = ?");
                 $stmtWaiter->execute([$data['order_id']]);
                 $orderData = $stmtWaiter->fetch();
-                
                 if ($orderData && $orderData['user_id']) {
                     $stmtTableNum = $db->prepare("SELECT number FROM restaurant_tables WHERE id = ?");
                     $stmtTableNum->execute([$orderData['table_id']]);
                     $tableNum = $stmtTableNum->fetchColumn();
-
-                    NotificationService::sendToTopic(
-                        'waiter_' . $orderData['user_id'],
-                        'Orden lista',
-                        "Llevar a Mesa " . ($tableNum ?? '??'),
-                        ['order_id' => (string)$data['order_id'], 'type' => 'order_ready']
-                    );
+                    NotificationService::sendToTopic('waiter_' . $orderData['user_id'], 'Orden lista', "Llevar a Mesa " . ($tableNum ?? '??'), ['order_id' => (string)$data['order_id'], 'type' => 'order_ready']);
                 }
             }
 
             $db->commit();
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() success for #{$data['order_id']}\n", FILE_APPEND);
             echo json_encode(['message' => 'Order status updated successfully']);
             
         } catch (Exception $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) $db->rollBack();
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             http_response_code(500);
             echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
         }
@@ -679,11 +626,17 @@ class OrderController {
     }
 
     public function update(): void {
+        $storageDir = __DIR__ . '/../../../scratch';
+        $logFile = $storageDir . '/qz_debug.log';
+        
+        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order update() called\n", FILE_APPEND);
+        
         $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
         
         $orderId = $data['order_id'] ?? null;
         if (!$orderId) {
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() failed - order_id missing\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'order_id is required']);
             return;
@@ -704,6 +657,7 @@ class OrderController {
 
             // Update items if provided
             if (isset($data['items']) && is_array($data['items'])) {
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Updating items for order $orderId\n", FILE_APPEND);
                 // Delete existing items
                 $db->prepare("DELETE FROM order_items WHERE order_id = ?")->execute([$orderId]);
                 
@@ -718,7 +672,6 @@ class OrderController {
                     if ($product === false) throw new Exception("Product ID {$item['product_id']} not found");
                     
                     $price = (float)$product['price'];
-                    // Use the potentially new table_id or the existing one
                     $finalTableId = array_key_exists('table_id', $data) ? $data['table_id'] : $order['table_id'];
                     $isTakeawayOrder = ($finalTableId === null);
                     
@@ -740,6 +693,7 @@ class OrderController {
             if (array_key_exists('table_id', $data)) {
                 $newTableId = $data['table_id'];
                 if ($newTableId != $order['table_id']) {
+                    file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Changing table for order $orderId from {$order['table_id']} to $newTableId\n", FILE_APPEND);
                     // Free old table
                     if ($order['table_id']) {
                         $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$order['table_id']]);
@@ -753,10 +707,19 @@ class OrderController {
             }
 
             $db->commit();
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order $orderId updated successfully in DB\n", FILE_APPEND);
+
+            // Notificar a todos que hubo una actualización
+            NotificationService::sendToTopic('new_orders', 'Pedido Actualizado', "El pedido #$orderId ha sido modificado.", [
+                'order_id' => (string)$orderId,
+                'type' => 'refresh'
+            ]);
+
             echo json_encode(['message' => 'Order updated successfully']);
             
         } catch (Exception $e) {
-            $db->rollBack();
+            if ($db->inTransaction()) $db->rollBack();
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             http_response_code(500);
             echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
         }
