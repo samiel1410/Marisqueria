@@ -162,7 +162,8 @@ export const handleRemoteKitchenPrint = async (orderId) => {
   const printer = localStorage.getItem('printer_name');
   const mode = localStorage.getItem('printer_mode') || 'qz';
 
-  console.log(`Processing remote kitchen print request for Order #${orderId}. Mode: ${mode}, Printer: ${printer}`);
+  console.log(`%c🖨️ EJECUTANDO IMPRESIÓN REMOTA (Pedido #${orderId})`, 'background: #3b82f6; color: white; font-weight: bold; padding: 2px 4px; border-radius: 4px;');
+  console.log(`%cConfiguración: Mode=${mode}, Printer=${printer}`, 'color: #3b82f6;');
 
   if (mode !== 'qz') {
     console.warn("Modo de impresión no es QZ Tray.");

@@ -94,26 +94,22 @@ function App() {
     const unsubscribe = onMessage(messaging, (payload) => {
       const { type, order_id, origin_host } = payload.data || {};
 
-      console.log('======================================================');
-      console.log('🔔 LLEGÓ NOTIFICACIÓN FCM A LA WEB (FOREGROUND):', payload);
-      console.log('TIPO:', type);
-      console.log('ORDER ID:', order_id);
-      console.log('ORIGIN:', origin_host);
-      console.log('======================================================');
+      console.log('%c🚀 NOTIFICACIÓN RECIBIDA DEL SERVIDOR', 'background: #22c55e; color: white; font-weight: bold; font-size: 14px; padding: 4px; border-radius: 4px;');
+      console.log('%cTIPO:', 'font-weight: bold;', type);
+      console.log('%cID:', 'font-weight: bold;', order_id || payload?.data?.session_id);
+      console.log('%cORIGEN:', 'font-weight: bold;', origin_host || 'Desconocido (Servidor viejo)');
+      console.log('%cPAYLOAD COMPLETO:', 'color: #94a3b8;', payload);
       
       // Filter by origin_host to avoid cross-environment triggers (dev vs prod)
       const isLocal = window.location.host.includes('localhost') || window.location.host.includes('127.0.0.1');
       if (origin_host) {
         if (origin_host !== window.location.host) {
-          console.warn(`[FCM] Ignorando mensaje de otro entorno (${origin_host}). Nosotros somos: ${window.location.host}`);
+          console.warn(`%c[FCM] Ignorando mensaje de otro entorno (${origin_host}). Nosotros somos: ${window.location.host}`, 'color: #f59e0b; font-weight: bold;');
           return;
         }
-      } else if (!isLocal) {
-        // Si estamos en producción y llega sin origin_host, probablemente sea de un servidor viejo o móvil directo
-        // Lo dejamos pasar por ahora para no romper producción vieja
-      } else {
+      } else if (isLocal) {
         // Si estamos en LOCAL y llega sin origin_host, asumimos que viene de PROD (viejo) y lo ignoramos
-        console.warn(`[FCM] Ignorando mensaje sin origin_host (posiblemente de Producción).`);
+        console.warn('%c[FCM] Ignorando mensaje sin origin_host (viene de Producción antigua).', 'color: #f59e0b; font-weight: bold;');
         return;
       }
       
