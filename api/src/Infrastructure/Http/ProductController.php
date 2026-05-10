@@ -52,21 +52,37 @@ class ProductController extends BaseController {
         
         $sql = "
             SELECT p.*, c.name as category_name, br.name as brand_name,
-                   (CASE WHEN ps.{$currentDay} = 1 THEN 1 ELSE 0 END) as is_daily
+                   (CASE WHEN ps.{$currentDay} = 1 THEN 1 ELSE 0 END) as is_daily,
+                   " . ($branchId ? "COALESCE(SUM(pbs.stock), 0)" : "COALESCE(SUM(pbs.stock), p.stock)") . " as current_stock
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
             LEFT JOIN brands br ON p.brand_id = br.id
             LEFT JOIN product_schedules ps ON p.id = ps.product_id
+            LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
             $whereSql
+            GROUP BY p.id
             ORDER BY c.name ASC, p.name ASC
             LIMIT $limit OFFSET $offset
         ";
         
         $stmt = $db->prepare($sql);
-        $stmt->execute($params);
+        
+        $execParams = $params;
+        if ($branchId) {
+            // El placeholder de branch_id en el JOIN aparece antes que los del WHERE
+            $execParams = array_merge([$branchId], $params);
+        }
+        
+        $stmt->execute($execParams);
+        
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Map current_stock to stock for frontend compatibility
+        foreach ($results as &$r) {
+            $r['stock'] = $r['current_stock'];
+        }
         
         echo json_encode([
-            'data' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            'data' => $results,
             'total' => $total,
             'page' => $page,
             'limit' => $limit
