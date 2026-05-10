@@ -102,8 +102,18 @@ function App() {
       console.log('======================================================');
       
       // Filter by origin_host to avoid cross-environment triggers (dev vs prod)
-      if (origin_host && origin_host !== window.location.host) {
-        console.warn(`[FCM] Ignorando mensaje de otro entorno (${origin_host}). Nosotros somos: ${window.location.host}`);
+      const isLocal = window.location.host.includes('localhost') || window.location.host.includes('127.0.0.1');
+      if (origin_host) {
+        if (origin_host !== window.location.host) {
+          console.warn(`[FCM] Ignorando mensaje de otro entorno (${origin_host}). Nosotros somos: ${window.location.host}`);
+          return;
+        }
+      } else if (!isLocal) {
+        // Si estamos en producción y llega sin origin_host, probablemente sea de un servidor viejo o móvil directo
+        // Lo dejamos pasar por ahora para no romper producción vieja
+      } else {
+        // Si estamos en LOCAL y llega sin origin_host, asumimos que viene de PROD (viejo) y lo ignoramos
+        console.warn(`[FCM] Ignorando mensaje sin origin_host (posiblemente de Producción).`);
         return;
       }
       
