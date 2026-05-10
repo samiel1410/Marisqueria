@@ -218,7 +218,7 @@ class InventoryController extends BaseController {
             <head>
                 <style>
                     @page { margin: 0; }
-                    body { font-family: 'Courier New', Courier, monospace; font-size: 11px; width: 90%; margin: 0 auto; padding: 10px 5%; }
+                    body { font-family: 'Courier New', Courier, monospace; font-size: 10px; width: 58mm; margin: 0 auto; padding: 5px 2mm; }
                     .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 10px; }
                     .table { width: 100%; border-collapse: collapse; }
                     .table th { border-bottom: 1px solid #000; text-align: left; }
