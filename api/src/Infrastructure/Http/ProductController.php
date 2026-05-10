@@ -238,7 +238,14 @@ class ProductController extends BaseController {
 
     private function uploadImage(array $file): ?string {
         $uploadDir = __DIR__ . '/../../public/uploads/products/';
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
+
+        // Si no se puede escribir (Vercel/Read-only), devolvemos Base64
+        if (!is_writable($uploadDir)) {
+            $imageData = file_get_contents($file['tmp_name']);
+            $mimeType = mime_content_type($file['tmp_name']);
+            return 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+        }
 
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg','jpeg','png','webp','gif'];

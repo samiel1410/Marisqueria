@@ -6,14 +6,11 @@ use App\Infrastructure\Services\NotificationService;
 
 class NotificationController {
     public function subscribe(): void {
-        $storageDir = __DIR__ . '/../../../scratch';
-        if (!is_dir($storageDir)) {
-            mkdir($storageDir, 0777, true);
-        }
+        $storageDir = NotificationService::getStoragePath();
         $logFile = $storageDir . '/qz_debug.log';
         $tokensFile = $storageDir . '/web_tokens.json';
 
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: NotificationController::subscribe called\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: NotificationController::subscribe called\n", FILE_APPEND);
         $data = json_decode(file_get_contents('php://input'), true);
         $token = $data['token'] ?? null;
         $topic = $data['topic'] ?? 'new_orders';

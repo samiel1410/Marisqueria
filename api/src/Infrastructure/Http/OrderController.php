@@ -10,33 +10,38 @@ use Exception;
 class OrderController {
     
     public function store(): void {
-        $user = AuthMiddleware::handle(); // Protect route
-        
-        $data = json_decode(file_get_contents('php://input'), true);
-        
-        if (!array_key_exists('table_id', $data) || empty($data['items']) || !is_array($data['items'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'table_id and items array are required']);
-            return;
-        }
+        $storageDir = NotificationService::getStoragePath();
+        $logFile = $storageDir . '/qz_debug.log';
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() called\n", FILE_APPEND);
 
-        $db = Database::getConnection();
-        
-        // Check if there is an open cash session
-        $stmtSession = $db->query("SELECT id FROM cash_sessions WHERE status = 'open' LIMIT 1");
-        if (!$stmtSession->fetch()) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Debe abrir una caja antes de poder registrar pedidos.']);
-            return;
-        }
-        
         try {
+            $user = AuthMiddleware::handle(); 
+            $data = json_decode(file_get_contents('php://input'), true);
+            
+            if (!isset($data['table_id']) || empty($data['items']) || !is_array($data['items'])) {
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() failed - invalid input data\n", FILE_APPEND);
+                http_response_code(400);
+                echo json_encode(['error' => 'table_id and items array are required']);
+                return;
+            }
+
+            $db = Database::getConnection();
+            
+            // Check if there is an open cash session
+            $stmtSession = $db->query("SELECT id FROM cash_sessions WHERE status = 'open' LIMIT 1");
+            if (!$stmtSession->fetch()) {
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() failed - no open cash session\n", FILE_APPEND);
+                http_response_code(403);
+                echo json_encode(['error' => 'Debe abrir una caja antes de poder registrar pedidos.']);
+                return;
+            }
+            
             $db->beginTransaction();
             
             // Check for existing active order if table_id is provided
             $existingOrder = null;
             if ($data['table_id'] !== null) {
-                $stmtExist = $db->prepare("SELECT id, total, user_id FROM orders WHERE table_id = ? AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1");
+                $stmtExist = $db->prepare("SELECT id, total, user_id, daily_number FROM orders WHERE table_id = ? AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1");
                 $stmtExist->execute([$data['table_id']]);
                 $existingOrder = $stmtExist->fetch(PDO::FETCH_ASSOC);
             }
@@ -59,21 +64,22 @@ class OrderController {
                 }
             }
 
+            $nextDailyNum = null;
             if ($existingOrder) {
                 $orderId = $existingOrder['id'];
-                // Update total
                 $newTotal = $existingOrder['total'] + $newItemsTotal;
                 $db->prepare("UPDATE orders SET total = ?, updated_by = ? WHERE id = ?")->execute([$newTotal, $user->id, $orderId]);
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() updated existing order #$orderId\n", FILE_APPEND);
             } else {
                 // Get next daily number
                 $stmtNum = $db->prepare("SELECT COALESCE(MAX(daily_number), 0) FROM orders WHERE DATE(created_at) = CURRENT_DATE");
                 $stmtNum->execute();
                 $nextDailyNum = (int)$stmtNum->fetchColumn() + 1;
 
-                // Create Order
                 $stmt = $db->prepare("INSERT INTO orders (table_id, user_id, total, status, daily_number) VALUES (?, ?, ?, 'pendiente', ?)");
                 $stmt->execute([$data['table_id'], $user->id, $newItemsTotal, $nextDailyNum]);
                 $orderId = $db->lastInsertId();
+                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() created new order #$orderId\n", FILE_APPEND);
             }
 
             // Insert Items
@@ -93,44 +99,38 @@ class OrderController {
                  $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $notes]);
             }
             
-            // Update Table Status
             if ($data['table_id'] !== null) {
-                $stmtTable = $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?");
-                $stmtTable->execute([$data['table_id']]);
+                $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?")->execute([$data['table_id']]);
             }
 
             $db->commit();
 
-            // Send notification to Web App (topic: new_orders)
+            // Notify kitchen
             $notifTitle = $existingOrder ? 'Orden Actualizada' : 'Nueva Orden';
             $notifBody = $existingOrder 
                 ? 'Se han añadido productos a la Mesa ' . ($data['table_id'] ?? '??')
                 : 'Se ha recibido un nuevo pedido para la Mesa ' . ($data['table_id'] ?? '??');
 
-            NotificationService::sendToTopic(
-                'new_orders', 
-                $notifTitle, 
-                $notifBody, 
-                [
-                    'order_id' => (string)$orderId, 
-                    'table_id' => (string)($data['table_id'] ?? ''),
-                    'type' => 'print_kitchen_request'
-                ]
-            );
+            NotificationService::sendToTopic('new_orders', $notifTitle, $notifBody, [
+                'order_id' => (string)$orderId, 
+                'table_id' => (string)($data['table_id'] ?? ''),
+                'type' => 'print_kitchen_request'
+            ]);
             
-            // Get daily number to return it (either newly created or from existing)
             $dailyNumberToReturn = $nextDailyNum ?? ($existingOrder['daily_number'] ?? null);
             if (!$dailyNumberToReturn) {
                 $stmtNumFetch = $db->prepare("SELECT daily_number FROM orders WHERE id = ?");
                 $stmtNumFetch->execute([$orderId]);
                 $dailyNumberToReturn = $stmtNumFetch->fetchColumn();
             }
-
+            
             http_response_code(201);
             echo json_encode(['message' => $existingOrder ? 'Order updated' : 'Order created', 'order_id' => $orderId, 'daily_number' => $dailyNumberToReturn]);
-            
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() success for order #$orderId\n", FILE_APPEND);
+
         } catch (Exception $e) {
-            $db->rollBack();
+            if ($db && $db->inTransaction()) $db->rollBack();
+            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             http_response_code(500);
             echo json_encode(['error' => 'Failed to process order', 'details' => $e->getMessage()]);
         }
@@ -626,10 +626,10 @@ class OrderController {
     }
 
     public function update(): void {
-        $storageDir = __DIR__ . '/../../../scratch';
+        $storageDir = NotificationService::getStoragePath();
         $logFile = $storageDir . '/qz_debug.log';
         
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order update() called\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order update() called\n", FILE_APPEND);
         
         $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
@@ -719,7 +719,7 @@ class OrderController {
             
         } catch (Exception $e) {
             if ($db->inTransaction()) $db->rollBack();
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             http_response_code(500);
             echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
         }
@@ -747,13 +747,10 @@ class OrderController {
     }
 
     public function requestRemoteKitchenPrint(): void {
-        $storageDir = __DIR__ . '/../../../scratch';
-        if (!is_dir($storageDir)) {
-            mkdir($storageDir, 0777, true);
-        }
+        $storageDir = NotificationService::getStoragePath();
         $logFile = $storageDir . '/qz_debug.log';
         
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint called\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint called\n", FILE_APPEND);
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
         if (!$orderId) {

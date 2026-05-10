@@ -7,12 +7,19 @@ use Google\Auth\HttpHandler\HttpHandlerFactory;
 
 class NotificationService {
     
+    public static function getStoragePath(): string {
+        $path = __DIR__ . '/../../../scratch';
+        if (!is_dir($path)) @mkdir($path, 0777, true);
+        if (!is_writable($path)) $path = sys_get_temp_dir();
+        return $path;
+    }
+
     public static function sendToTopic(string $topic, string $title, string $body, array $data = []): bool {
         $serviceAccountPath = __DIR__ . '/../../../service-account.json';
         if (getenv('FIREBASE_CREDENTIALS')) {
             $serviceAccountPath = sys_get_temp_dir() . '/service-account.json';
             if (!file_exists($serviceAccountPath)) {
-                file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
+                @file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
             }
         }
         if (!file_exists($serviceAccountPath)) {
@@ -21,13 +28,10 @@ class NotificationService {
         }
 
         try {
-            $storageDir = __DIR__ . '/../../../scratch';
-            if (!is_dir($storageDir)) {
-                mkdir($storageDir, 0777, true);
-            }
+            $storageDir = self::getStoragePath();
             $logFile = $storageDir . '/qz_debug.log';
 
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Sending notification to topic $topic\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Sending notification to topic $topic\n", FILE_APPEND);
             
             // 1. Get OAuth2 Access Token
             $scopes = ['https://www.googleapis.com/auth/cloud-platform'];
