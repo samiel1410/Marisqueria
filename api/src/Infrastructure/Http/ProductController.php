@@ -138,8 +138,8 @@ class ProductController extends BaseController {
         }
 
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO products (category_id, brand_id, name, price, stock, min_stock, unit, image_path, manages_inventory)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO products (category_id, brand_id, name, price, stock, min_stock, unit, image_path, manages_inventory, is_takeaway, takeaway_surcharge)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $data['category_id'],
             $data['brand_id'] ?? null,
@@ -150,6 +150,8 @@ class ProductController extends BaseController {
             $data['unit'] ?? 'unidades',
             $imagePath,
             isset($data['manages_inventory']) ? $data['manages_inventory'] : 1,
+            isset($data['is_takeaway']) ? $data['is_takeaway'] : 0,
+            $data['takeaway_surcharge'] ?? 0,
         ]);
         $productId = (int)$db->lastInsertId();
 
@@ -186,7 +188,7 @@ class ProductController extends BaseController {
 
         $fields = [];
         $params = [];
-        foreach (['name','price','stock','min_stock','unit','category_id','brand_id', 'manages_inventory'] as $f) {
+        foreach (['name','price','stock','min_stock','unit','category_id','brand_id', 'manages_inventory', 'is_takeaway', 'takeaway_surcharge'] as $f) {
             if (isset($data[$f])) {
                 $fields[] = "$f = ?";
                 $params[] = $data[$f] !== '' ? $data[$f] : null;

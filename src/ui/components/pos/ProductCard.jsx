@@ -1,8 +1,14 @@
 import React from 'react';
 
-const ProductCard = ({ product, getImageUrl, onAddToCart }) => {
+const ProductCard = ({ product, isTakeawayMode, getImageUrl, onAddToCart }) => {
   const imageUrl = getImageUrl(product.image_path);
   
+  const basePrice = parseFloat(product.price);
+  const surcharge = (isTakeawayMode && (product.is_takeaway === 1 || product.is_takeaway === true || product.is_takeaway === '1')) 
+    ? parseFloat(product.takeaway_surcharge || 0) 
+    : 0;
+  const finalPrice = basePrice + surcharge;
+
   return (
     <div 
       onClick={() => onAddToCart(product)}
@@ -20,8 +26,11 @@ const ProductCard = ({ product, getImageUrl, onAddToCart }) => {
             <span className="text-[8px] font-black uppercase tracking-widest">Sin Imagen</span>
           </div>
         )}
-        <div className="absolute top-1.5 right-1.5 bg-white shadow-md px-2 py-1 rounded-lg border border-primary-50">
-          <span className="text-xs font-black text-brand">${parseFloat(product.price).toFixed(2)}</span>
+        <div className="absolute top-1.5 right-1.5 bg-white shadow-md px-2 py-1 rounded-lg border border-primary-50 flex flex-col items-end">
+          <span className="text-xs font-black text-brand">${finalPrice.toFixed(2)}</span>
+          {surcharge > 0 && (
+            <span className="text-[7px] font-black text-orange-500 uppercase leading-none">+ LLEVAR</span>
+          )}
         </div>
       </div>
       <div className="flex-1 flex flex-col justify-between">

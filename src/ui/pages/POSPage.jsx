@@ -138,25 +138,50 @@ export default function POSPage() {
     return list;
   }, [products, search, selectedCategory, schedules, today]);
 
+  const isTakeawayMode = selectedTableId === '';
+
   const handleAddToCart = (product) => {
     setCart(prev => {
       const exists = prev.find(item => item.product_id === product.id);
+      
+      const basePrice = parseFloat(product.price);
+      const surcharge = (isTakeawayMode && (product.is_takeaway === 1 || product.is_takeaway === true || product.is_takeaway === '1')) 
+        ? parseFloat(product.takeaway_surcharge || 0) 
+        : 0;
+      const finalPrice = basePrice + surcharge;
+
       if (exists) {
         return prev.map(item => 
           item.product_id === product.id 
-            ? { ...item, quantity: item.quantity + 1 } 
+            ? { ...item, quantity: item.quantity + 1, price: finalPrice } 
             : item
         );
       }
       return [...prev, {
         product_id: product.id,
         name: product.name,
-        price: product.price,
+        price: finalPrice,
         quantity: 1,
         notes: ''
       }];
     });
   };
+
+  useEffect(() => {
+    if (cart.length === 0) return;
+    
+    setCart(prev => prev.map(item => {
+      const product = products.find(p => p.id === item.product_id);
+      if (!product) return item;
+
+      const basePrice = parseFloat(product.price);
+      const surcharge = (isTakeawayMode && (product.is_takeaway === 1 || product.is_takeaway === true || product.is_takeaway === '1')) 
+        ? parseFloat(product.takeaway_surcharge || 0) 
+        : 0;
+      
+      return { ...item, price: basePrice + surcharge };
+    }));
+  }, [isTakeawayMode]);
 
   const updateQuantity = (productId, delta) => {
     setCart(prev => prev.map(item => {
@@ -345,6 +370,7 @@ export default function POSPage() {
                 <ProductCard 
                   key={p.id} 
                   product={p} 
+                  isTakeawayMode={isTakeawayMode}
                   getImageUrl={getImageUrl} 
                   onAddToCart={handleAddToCart} 
                 />

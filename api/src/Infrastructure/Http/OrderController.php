@@ -44,11 +44,16 @@ class OrderController {
             // Calculate new items total
             $newItemsTotal = 0;
             foreach ($data['items'] as $item) {
-                $stmt = $db->prepare("SELECT price FROM products WHERE id = ?");
+                $stmt = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
                 $stmt->execute([$item['product_id']]);
-                $product = $stmt->fetch();
+                $product = $stmt->fetch(PDO::FETCH_ASSOC);
                 if ($product) {
-                    $newItemsTotal += $product['price'] * $item['quantity'];
+                    $itemPrice = (float)$product['price'];
+                    $isTakeawayOrder = ($data['table_id'] === null);
+                    if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
+                        $itemPrice += (float)($product['takeaway_surcharge'] ?? 0);
+                    }
+                    $newItemsTotal += $itemPrice * $item['quantity'];
                 } else {
                     throw new Exception("Product ID {$item['product_id']} not found");
                 }
@@ -74,9 +79,15 @@ class OrderController {
             // Insert Items
             $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
             foreach ($data['items'] as $item) {
-                 $stmtPrice = $db->prepare("SELECT price FROM products WHERE id = ?");
+                 $stmtPrice = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
                  $stmtPrice->execute([$item['product_id']]);
-                 $price = $stmtPrice->fetchColumn();
+                 $product = $stmtPrice->fetch(PDO::FETCH_ASSOC);
+                 
+                 $price = (float)$product['price'];
+                 $isTakeawayOrder = ($data['table_id'] === null);
+                 if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
+                     $price += (float)($product['takeaway_surcharge'] ?? 0);
+                 }
                  
                  $notes = $item['notes'] ?? null;
                  $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $notes]);
@@ -696,11 +707,20 @@ class OrderController {
                 $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
                 
                 foreach ($data['items'] as $item) {
-                    $stmtPrice = $db->prepare("SELECT price FROM products WHERE id = ?");
+                    $stmtPrice = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
                     $stmtPrice->execute([$item['product_id']]);
-                    $price = $stmtPrice->fetchColumn();
+                    $product = $stmtPrice->fetch(PDO::FETCH_ASSOC);
                     
-                    if ($price === false) throw new Exception("Product ID {$item['product_id']} not found");
+                    if ($product === false) throw new Exception("Product ID {$item['product_id']} not found");
+                    
+                    $price = (float)$product['price'];
+                    // Use the potentially new table_id or the existing one
+                    $finalTableId = array_key_exists('table_id', $data) ? $data['table_id'] : $order['table_id'];
+                    $isTakeawayOrder = ($finalTableId === null);
+                    
+                    if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
+                        $price += (float)($product['takeaway_surcharge'] ?? 0);
+                    }
                     
                     $subtotal = $price * $item['quantity'];
                     $newTotal += $subtotal;

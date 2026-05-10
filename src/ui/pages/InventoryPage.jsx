@@ -15,6 +15,8 @@ const emptyForm = {
   category_id: '', brand_id: '', image: null, imagePreview: null,
   branch_stocks: [],   // [{ branch_id, stock }]
   manages_inventory: 1,
+  is_takeaway: 0,
+  takeaway_surcharge: 0,
 };
 
 // ─── ActionMenu ──────────────────────────────────────────────────────────────
@@ -114,6 +116,8 @@ function ProductModal({ open, onClose, product, categories, brands, branches, on
         imagePreview: product.image_path ? product.image_path : null,
         branch_stocks: product.branch_stocks || [],
         manages_inventory: product.manages_inventory !== undefined ? product.manages_inventory : 1,
+        is_takeaway: product.is_takeaway !== undefined ? product.is_takeaway : 0,
+        takeaway_surcharge: product.takeaway_surcharge || 0,
       });
     } else {
       setForm({ ...emptyForm, branch_stocks: branches.map(b => ({ branch_id: b.id, stock: 0 })) });
@@ -147,7 +151,7 @@ function ProductModal({ open, onClose, product, categories, brands, branches, on
     setSaving(true);
     try {
       const fd = new FormData();
-      ['name','price','stock','min_stock','unit','category_id','brand_id','manages_inventory'].forEach(k => {
+      ['name','price','stock','min_stock','unit','category_id','brand_id','manages_inventory', 'is_takeaway', 'takeaway_surcharge'].forEach(k => {
         if (form[k] !== '' && form[k] !== null) fd.append(k, form[k]);
       });
       if (form.image) fd.append('image', form.image);
@@ -211,8 +215,23 @@ function ProductModal({ open, onClose, product, categories, brands, branches, on
             <div className={`flex items-center gap-2 pt-2 ${!form.manages_inventory ? 'md:col-span-2' : ''}`}>
               <input type="checkbox" id="manages_inventory" checked={!!form.manages_inventory} onChange={e => setForm(f=>({...f,manages_inventory:e.target.checked ? 1 : 0}))} className="w-4 h-4 text-brand rounded border-primary-300 focus:ring-brand"/>
               <label htmlFor="manages_inventory" className="text-sm font-semibold text-primary-700 cursor-pointer">
-                Maneja Inventario (Si se desactiva, no descontará stock)
+                Maneja Inventario
               </label>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2 border-l pl-4 border-primary-100">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="is_takeaway" checked={!!form.is_takeaway} onChange={e => setForm(f=>({...f,is_takeaway:e.target.checked ? 1 : 0}))} className="w-4 h-4 text-brand rounded border-primary-300 focus:ring-brand"/>
+                <label htmlFor="is_takeaway" className="text-sm font-semibold text-primary-700 cursor-pointer">
+                  Configurar Precio "Para Llevar"
+                </label>
+              </div>
+              {!!form.is_takeaway && (
+                <div className="animate-in slide-in-from-left-2 duration-200">
+                  <Input label="Recargo por llevar ($)" type="number" step="0.01" min="0" value={form.takeaway_surcharge} onChange={e => setForm(f=>({...f,takeaway_surcharge:e.target.value}))}/>
+                  <p className="text-[10px] text-primary-400 mt-1 italic">Este valor se sumará al precio base cuando la orden sea "Para Llevar".</p>
+                </div>
+              )}
             </div>
           </div>
 
