@@ -455,21 +455,21 @@ class OrderController {
                 $db->prepare("UPDATE orders SET status = ?, updated_by = ? WHERE id = ?")->execute([$newStatus, $user->id, $data['order_id']]);
             }
 
-            // Liberar mesa solo si se cobró totalmente o se canceló
+            // Liberar mesa solo si aplica
             if (($newStatus === 'cobrado' || $newStatus === 'cancelado') && $orderDataFull['table_id']) {
                 $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$orderDataFull['table_id']]);
                 
                 // Notificaciones de mesa libre
                 NotificationService::sendToTopic('new_orders', 'Mesa Liberada', "La mesa asociada a la orden #{$data['order_id']} ahora está disponible.", ['order_id' => (string)$data['order_id'], 'table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
                 NotificationService::sendToTopic('table_updates', 'Mesa Disponible', "Mesa disponible", ['table_id' => (string)$orderDataFull['table_id'], 'type' => 'table_available']);
-                
-                if ($newStatus === 'cobrado') {
-                    // Registrar en la cola de impresión (Respaldo por si falla FCM)
-                    PrintQueueController::addJob('print_request', [
-                        'order_id' => (string)$data['order_id']
-                    ]);
-                    NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string)$data['order_id'], 'type' => 'print_request']);
-                }
+            }
+
+            // Disparar impresión automática al cobrar (con o sin mesa: aplica también a pedidos Para Llevar)
+            if ($newStatus === 'cobrado') {
+                PrintQueueController::addJob('print_request', [
+                    'order_id' => (string)$data['order_id']
+                ]);
+                NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string)$data['order_id'], 'type' => 'print_request']);
             }
 
             // ... (rest of updateStatus logic)
