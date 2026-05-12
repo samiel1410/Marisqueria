@@ -7,7 +7,7 @@ class CashController extends BaseController {
 
     // GET /cash/status
     public function getCurrentStatus(): void {
-        AuthMiddleware::handle();
+        $user = AuthMiddleware::handle();
         $db = Database::getConnection();
         $registerId = $_GET['register_id'] ?? null;
 
@@ -40,9 +40,9 @@ class CashController extends BaseController {
                 COALESCE(SUM(CASE WHEN payment_method = 'efectivo' THEN amount ELSE 0 END), 0) as cash_sales,
                 COALESCE(SUM(CASE WHEN payment_method = 'transferencia' THEN amount ELSE 0 END), 0) as transfer_sales
             FROM order_payments 
-            WHERE user_id = ? AND created_at >= ?
+            WHERE created_at >= ?
         ");
-        $stmtSales->execute([$session['user_id'], $session['opened_at']]);
+        $stmtSales->execute([$session['opened_at']]);
         $salesData = $stmtSales->fetch(PDO::FETCH_ASSOC);
         $currentCashSales = (float)$salesData['cash_sales'];
         $currentTransferSales = (float)$salesData['transfer_sales'];
@@ -175,7 +175,7 @@ class CashController extends BaseController {
 
     // POST /cash/close
     public function closeSession(): void {
-        AuthMiddleware::handle();
+        $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
         $db = Database::getConnection();
         $registerId = $data['register_id'] ?? null;
@@ -188,16 +188,16 @@ class CashController extends BaseController {
         }
         
         $session = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$session) { $this->sendError('No hay sesión abierta para esta caja', 404); return; }
+        if (!$session) { $this->sendError('No hay una sesión abierta en esta sucursal', 404); return; }
 
         $stmtSales = $db->prepare("
             SELECT 
                 COALESCE(SUM(CASE WHEN payment_method = 'efectivo' THEN amount ELSE 0 END), 0) as cash_sales,
                 COALESCE(SUM(CASE WHEN payment_method = 'transferencia' THEN amount ELSE 0 END), 0) as transfer_sales
             FROM order_payments 
-            WHERE user_id = ? AND created_at >= ?
+            WHERE created_at >= ?
         ");
-        $stmtSales->execute([$session['user_id'], $session['opened_at']]);
+        $stmtSales->execute([$session['opened_at']]);
         $salesData = $stmtSales->fetch(PDO::FETCH_ASSOC);
         $totalCashSales = (float)$salesData['cash_sales'];
         $totalTransferSales = (float)$salesData['transfer_sales'];
