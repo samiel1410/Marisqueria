@@ -9,9 +9,18 @@ class NotificationService {
     
     public static function getStoragePath(): string {
         $path = __DIR__ . '/../../../scratch';
+        // In Vercel or read-only systems, use /tmp
+        if (strpos(__DIR__, '/var/task') !== false || !is_writable($path)) {
+            return sys_get_temp_dir();
+        }
         if (!is_dir($path)) @mkdir($path, 0777, true);
-        if (!is_writable($path)) $path = sys_get_temp_dir();
         return $path;
+    }
+
+    private static function log(string $message): void {
+        $storageDir = self::getStoragePath();
+        $logFile = $storageDir . '/qz_debug.log';
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " " . $message . "\n", FILE_APPEND);
     }
 
     public static function sendToTopic(string $topic, string $title, string $body, array $data = []): bool {
@@ -28,10 +37,7 @@ class NotificationService {
         }
 
         try {
-            $storageDir = self::getStoragePath();
-            $logFile = $storageDir . '/qz_debug.log';
-
-            @file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Sending notification to topic $topic\n", FILE_APPEND);
+            self::log("FCM: Sending notification to topic $topic");
             
             // 1. Get OAuth2 Access Token
             $scopes = ['https://www.googleapis.com/auth/cloud-platform'];
@@ -74,10 +80,10 @@ class NotificationService {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Topic response code $httpCode\n", FILE_APPEND);
+            self::log("FCM: Topic response code $httpCode");
 
-            // 4. Enviar a tokens directos (bypassing topic delay)
-            $tokensFile = $storageDir . '/web_tokens.json';
+            // 4. Send to direct tokens (optional bypass)
+            $tokensFile = self::getStoragePath() . '/web_tokens.json';
             if (file_exists($tokensFile)) {
                 $directTokens = json_decode(file_get_contents($tokensFile), true) ?: [];
                 $sentCount = 0;
@@ -100,7 +106,7 @@ class NotificationService {
                     ]);
                     curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($directMessage));
                     curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch2, CURLOPT_TIMEOUT, 2); // Timeout corto para no bloquear
+                    curl_setopt($ch2, CURLOPT_TIMEOUT, 2);
                     
                     curl_exec($ch2);
                     $dCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
@@ -108,7 +114,7 @@ class NotificationService {
                     
                     if ($dCode === 200) $sentCount++;
                 }
-                file_put_contents($logFile, date('Y-m-d H:i:s') . " FCM: Sent to $sentCount direct tokens\n", FILE_APPEND);
+                self::log("FCM: Sent to $sentCount direct tokens");
             }
 
             return $httpCode === 200;
@@ -123,12 +129,12 @@ class NotificationService {
         if (getenv('FIREBASE_CREDENTIALS')) {
             $serviceAccountPath = sys_get_temp_dir() . '/service-account.json';
             if (!file_exists($serviceAccountPath)) {
-                file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
+                @file_put_contents($serviceAccountPath, getenv('FIREBASE_CREDENTIALS'));
             }
         }
         
         if (!file_exists($serviceAccountPath)) {
-            error_log("CRITICAL: Firebase service-account.json MISSING at $serviceAccountPath. Notifications will not work.");
+            error_log("CRITICAL: Firebase service-account.json MISSING. Notifications will not work.");
             return false;
         }
 
@@ -138,13 +144,11 @@ class NotificationService {
             $tokenData = $credentials->fetchAuthToken(HttpHandlerFactory::build());
             
             if (!isset($tokenData['access_token'])) {
-                error_log("FCM Subscribe Error: Could not fetch access token. Check service-account.json permissions.");
+                error_log("FCM Subscribe Error: Could not fetch access token.");
                 return false;
             }
             
             $accessToken = $tokenData['access_token'];
-
-            // Usar el endpoint de batchAdd que soporta OAuth2 correctamente
             $url = "https://iid.googleapis.com/iid/v1:batchAdd";
 
             $body = json_encode([
@@ -167,14 +171,7 @@ class NotificationService {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            $storageDir = __DIR__ . '/../../../scratch';
-            if (is_dir($storageDir)) {
-                file_put_contents($storageDir . '/qz_debug.log', date('Y-m-d H:i:s') . " FCM Subscribe Raw Response ($httpCode): " . $response . "\n", FILE_APPEND);
-            }
-
-            if ($httpCode !== 200) {
-                error_log("FCM Subscribe Error ($topic): Response code $httpCode, response: $response");
-            }
+            self::log("FCM Subscribe Raw Response ($httpCode): " . $response);
 
             return $httpCode === 200;
         } catch (\Exception $e) {
