@@ -51,12 +51,12 @@ class CategoryController {
         $type = $data['type'] ?? 'alimento';
         
         if (!$id || !$name) {
-            http_response_code(400);
-            echo json_encode(['error' => 'ID and name required']);
+            $this->sendError('ID and name required', 400);
             return;
         }
         $db = Database::getConnection();
-        $db->prepare("UPDATE categories SET name=?, type=? WHERE id=?")->execute([$name, $type, $id]);
-        echo json_encode(['message' => 'Category updated']);
+        $db->prepare("UPDATE categories SET name=?, `type`=? WHERE id=?")->execute([$name, $type, $id]);
+        
+        $this->sendSuccess([], 'Categoría actualizada');
     }
 }
