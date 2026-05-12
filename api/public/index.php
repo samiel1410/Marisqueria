@@ -8,9 +8,7 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'error' => 'Early PHP Error',
-        'message' => $errstr,
-        'file' => $errfile,
-        'line' => $errline
+        'message' => $errstr
     ]);
     exit;
 });
@@ -22,9 +20,7 @@ register_shutdown_function(function() {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'error' => 'Fatal Shutdown Error',
-            'message' => $error['message'],
-            'file' => $error['file'],
-            'line' => $error['line']
+            'message' => $error['message']
         ]);
     }
 });
