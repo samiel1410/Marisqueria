@@ -1,5 +1,38 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+
+// Global error handler
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    if (!(error_reporting() & $errno)) return false;
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => 'Early PHP Error',
+        'message' => $errstr,
+        'file' => $errfile,
+        'line' => $errline
+    ]);
+    exit;
+});
+
+// Shutdown function to catch Fatal Errors
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'error' => 'Fatal Shutdown Error',
+            'message' => $error['message'],
+            'file' => $error['file'],
+            'line' => $error['line']
+        ]);
+    }
+});
+
 date_default_timezone_set('America/Guayaquil');
+
 // CORS Headers
 $allowedOrigins = [
     'http://localhost:5173',
@@ -31,7 +64,6 @@ if (file_exists(__DIR__ . '/../../.env')) {
     $dotenv->load();
 }
 
-
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -40,15 +72,12 @@ if (strpos($uri, '/public') !== false) {
 } else if (strpos($uri, '/api') !== false) {
     $uri = substr($uri, strpos($uri, '/api') + 4);
 }
-if (empty($uri))
-    $uri = '/';
-if ($uri[0] !== '/')
-    $uri = '/' . $uri;
+if (empty($uri)) $uri = '/';
+if ($uri[0] !== '/') $uri = '/' . $uri;
 
 $router = new Router();
 
-$router->add('GET', '/', function () {
-    echo json_encode(['message' => 'API is running']); });
+$router->add('GET', '/', function () { echo json_encode(['message' => 'API is running']); });
 
 // Auth
 $router->add('POST', '/login', [\App\Infrastructure\Http\AuthController::class, 'login']);
@@ -86,13 +115,6 @@ $router->add('POST', '/tables', [\App\Infrastructure\Http\TableController::class
 $router->add('POST', '/tables/delete', [\App\Infrastructure\Http\TableController::class, 'delete']);
 $router->add('POST', '/tables/update', [\App\Infrastructure\Http\TableController::class, 'updatePositions']);
 
-// Cash Registers
-$router->add('GET', '/cash-registers', [\App\Infrastructure\Http\CashRegisterController::class, 'index']);
-$router->add('POST', '/cash-registers', [\App\Infrastructure\Http\CashRegisterController::class, 'store']);
-$router->add('POST', '/cash-registers/update', [\App\Infrastructure\Http\CashRegisterController::class, 'update']);
-$router->add('POST', '/cash-registers/delete', [\App\Infrastructure\Http\CashRegisterController::class, 'delete']);
-$router->add('GET', '/cash-registers/sessions', [\App\Infrastructure\Http\CashRegisterController::class, 'sessions']);
-
 // Cash
 $router->add('GET', '/cash/status', [\App\Infrastructure\Http\CashController::class, 'getCurrentStatus']);
 $router->add('GET', '/cash/sessions', [\App\Infrastructure\Http\CashController::class, 'sessions']);
@@ -127,12 +149,6 @@ $router->add('POST', '/banks', [\App\Infrastructure\Http\BankController::class, 
 $router->add('POST', '/banks/delete', [\App\Infrastructure\Http\BankController::class, 'delete']);
 $router->add('POST', '/banks/upload-qr', [\App\Infrastructure\Http\BankController::class, 'uploadQr']);
 
-// Product Schedules
-$router->add('GET', '/product-schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'index']);
-$router->add('POST', '/product-schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'save']);
-$router->add('GET', '/schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'index']);
-$router->add('POST', '/schedules', [\App\Infrastructure\Http\ProductScheduleController::class, 'save']);
-
 // Orders
 $router->add('GET', '/orders', [\App\Infrastructure\Http\OrderController::class, 'index']);
 $router->add('GET', '/orders/active', [\App\Infrastructure\Http\OrderController::class, 'getActiveOrders']);
@@ -148,39 +164,15 @@ $router->add('POST', '/orders/status', [\App\Infrastructure\Http\OrderController
 $router->add('POST', '/orders/update', [\App\Infrastructure\Http\OrderController::class, 'update']);
 $router->add('POST', '/orders/cancel', [\App\Infrastructure\Http\OrderController::class, 'cancel']);
 
-// Dashboard
-$router->add('GET', '/dashboard/stats', [\App\Infrastructure\Http\DashboardController::class, 'getStats']);
-
-// Notifications
-$router->add('POST', '/notifications/subscribe', [\App\Infrastructure\Http\NotificationController::class, 'subscribe']);
-
-// QZ Tray Security
-$router->add('POST', '/qz/sign', [\App\Infrastructure\Http\PrintSignatureController::class, 'sign']);
-$router->add('GET', '/qz/certificate', [\App\Infrastructure\Http\PrintSignatureController::class, 'certificate']);
-
-// Print Queue
-$router->add('GET', '/print-queue', [\App\Infrastructure\Http\PrintQueueController::class, 'getPending']);
-$router->add('POST', '/print-queue/status', [\App\Infrastructure\Http\PrintQueueController::class, 'updateStatus']);
-
-// Weekly Planning
-// Temporary reset route
-$router->add('GET', '/reset-admin', function() {
-    $db = \App\Infrastructure\Persistence\Database::getConnection();
-    $newPassword = password_hash('admin123', PASSWORD_BCRYPT);
-    $stmt = $db->prepare("UPDATE users SET password = ? WHERE username = 'admin'");
-    $stmt->execute([$newPassword]);
-    echo json_encode(['message' => 'Contraseña de admin actualizada a: admin123']);
-});
-
 try {
     $router->run($method, $uri);
 } catch (Throwable $e) {
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
-        'error' => 'Global Error: ' . $e->getMessage(),
+        'error' => 'Global Router Error',
+        'message' => $e->getMessage(),
         'file' => $e->getFile(),
-        'line' => $e->getLine(),
-        'trace' => $e->getTraceAsString()
+        'line' => $e->getLine()
     ]);
 }
