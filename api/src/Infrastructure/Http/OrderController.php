@@ -7,30 +7,32 @@ use App\Infrastructure\Services\NotificationService;
 use PDO;
 use Exception;
 
-class OrderController extends BaseController {
-    
-    public function store(): void {
+class OrderController extends BaseController
+{
+
+    public function store(): void
+    {
         $db = null;
         try {
-            $user = AuthMiddleware::handle(); 
+            $user = AuthMiddleware::handle();
             $data = json_decode(file_get_contents('php://input'), true);
-            
+
             if (!isset($data['table_id']) || empty($data['items']) || !is_array($data['items'])) {
                 $this->sendError('table_id and items array are required', 400);
                 return;
             }
 
             $db = Database::getConnection();
-            
+
             // Check if there is an open cash session
             $stmtSession = $db->query("SELECT id FROM cash_sessions WHERE status = 'open' LIMIT 1");
             if (!$stmtSession->fetch()) {
                 $this->sendError('Debe abrir una caja antes de poder registrar pedidos.', 403);
                 return;
             }
-            
+
             $db->beginTransaction();
-            
+
             // Check for existing active order
             $existingOrder = null;
             if ($data['table_id'] !== null) {
@@ -45,10 +47,10 @@ class OrderController extends BaseController {
                 $stmt->execute([$item['product_id']]);
                 $product = $stmt->fetch(PDO::FETCH_ASSOC);
                 if ($product) {
-                    $itemPrice = (float)$product['price'];
+                    $itemPrice = (float) $product['price'];
                     $isTakeawayOrder = ($data['table_id'] === null);
                     if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
-                        $itemPrice += (float)($product['takeaway_surcharge'] ?? 0);
+                        $itemPrice += (float) ($product['takeaway_surcharge'] ?? 0);
                     }
                     $newItemsTotal += $itemPrice * $item['quantity'];
                 } else {
@@ -63,7 +65,7 @@ class OrderController extends BaseController {
             } else {
                 $stmtNum = $db->prepare("SELECT COALESCE(MAX(daily_number), 0) FROM orders WHERE DATE(created_at) = CURRENT_DATE");
                 $stmtNum->execute();
-                $nextDailyNum = (int)$stmtNum->fetchColumn() + 1;
+                $nextDailyNum = (int) $stmtNum->fetchColumn() + 1;
 
                 $stmt = $db->prepare("INSERT INTO orders (table_id, user_id, total, status, daily_number) VALUES (?, ?, ?, 'pendiente', ?)");
                 $stmt->execute([$data['table_id'], $user->id, $newItemsTotal, $nextDailyNum]);
@@ -72,18 +74,18 @@ class OrderController extends BaseController {
 
             $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
             foreach ($data['items'] as $item) {
-                 $stmtPrice = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
-                 $stmtPrice->execute([$item['product_id']]);
-                 $product = $stmtPrice->fetch(PDO::FETCH_ASSOC);
-                 
-                 $price = (float)$product['price'];
-                 $isTakeawayOrder = ($data['table_id'] === null);
-                 if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
-                     $price += (float)($product['takeaway_surcharge'] ?? 0);
-                 }
-                 $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $item['notes'] ?? null]);
+                $stmtPrice = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
+                $stmtPrice->execute([$item['product_id']]);
+                $product = $stmtPrice->fetch(PDO::FETCH_ASSOC);
+
+                $price = (float) $product['price'];
+                $isTakeawayOrder = ($data['table_id'] === null);
+                if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
+                    $price += (float) ($product['takeaway_surcharge'] ?? 0);
+                }
+                $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $item['notes'] ?? null]);
             }
-            
+
             if ($data['table_id'] !== null) {
                 $db->prepare("UPDATE restaurant_tables SET status = 'ocupada' WHERE id = ?")->execute([$data['table_id']]);
             }
@@ -91,24 +93,26 @@ class OrderController extends BaseController {
             $db->commit();
 
             NotificationService::sendToTopic('new_orders', $existingOrder ? 'Orden Actualizada' : 'Nueva Orden', 'Actualizando...', [
-                'order_id' => (string)$orderId, 
+                'order_id' => (string) $orderId,
                 'type' => 'print_kitchen_request'
             ]);
-            
+
             $this->sendJson(['order_id' => $orderId], 201);
         } catch (Exception $e) {
-            if ($db && $db->inTransaction()) $db->rollBack();
+            if ($db && $db->inTransaction())
+                $db->rollBack();
             $this->sendError('Failed to process order: ' . $e->getMessage(), 500);
         }
     }
-    
-    public function index(): void {
+
+    public function index(): void
+    {
         AuthMiddleware::handle();
         $db = Database::getConnection();
-        
+
         $userId = $_GET['user_id'] ?? null;
         $customerId = $_GET['customer_id'] ?? null;
-        
+
         $sql = "
             SELECT o.*, t.number as table_number, u.username as waiter_name, up.username as updated_by_name,
                    (SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = o.id) as total_paid,
@@ -125,12 +129,12 @@ class OrderController extends BaseController {
         ";
         $params = [];
         $where = [];
-        
+
         if ($userId) {
             $where[] = "o.user_id = ?";
             $params[] = $userId;
         }
-        
+
         if ($customerId) {
             $where[] = "o.customer_id = ?";
             $params[] = $customerId;
@@ -139,14 +143,14 @@ class OrderController extends BaseController {
         if (!empty($where)) {
             $sql .= " WHERE " . implode(" AND ", $where);
         }
-        
+
         $sql .= " ORDER BY o.created_at DESC";
-        
+
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
-        
+
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         foreach ($orders as &$order) {
             $stmtItems = $db->prepare("
                 SELECT oi.*, p.name as product_name
@@ -157,13 +161,14 @@ class OrderController extends BaseController {
             $stmtItems->execute([$order['id']]);
             $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
         }
-        
+
         echo json_encode($orders);
     }
-    
-    public function getActiveOrders(): void {
+
+    public function getActiveOrders(): void
+    {
         AuthMiddleware::handle();
-        
+
         $db = Database::getConnection();
         $stmt = $db->query("
             SELECT o.*, t.number as table_number, u.username as waiter_name, up.username as updated_by_name,
@@ -181,9 +186,9 @@ class OrderController extends BaseController {
 
             ORDER BY o.created_at DESC
         ");
-        
+
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         foreach ($orders as &$order) {
             $stmtItems = $db->prepare("
                 SELECT oi.*, p.name as product_name
@@ -194,15 +199,16 @@ class OrderController extends BaseController {
             $stmtItems->execute([$order['id']]);
             $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
         }
-        
+
         echo json_encode($orders);
     }
 
-    public function getKitchenOrders(): void {
+    public function getKitchenOrders(): void
+    {
         try {
             AuthMiddleware::handle();
             $db = Database::getConnection();
-            
+
             $stmt = $db->query("
                 SELECT o.*, t.number as table_number, u.username as waiter_name
                 FROM orders o
@@ -211,9 +217,9 @@ class OrderController extends BaseController {
                 WHERE o.status IN ('pendiente', 'en cocina')
                 ORDER BY o.created_at ASC
             ");
-            
+
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             foreach ($orders as &$order) {
                 $stmtItems = $db->prepare("
                     SELECT oi.*, p.name as product_name
@@ -224,17 +230,18 @@ class OrderController extends BaseController {
                 $stmtItems->execute([$order['id']]);
                 $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
             }
-            
+
             $this->sendJson($orders);
         } catch (Exception $e) {
             $this->sendError('Error fetching kitchen orders: ' . $e->getMessage(), 500);
         }
     }
 
-    public function getByTable(): void {
+    public function getByTable(): void
+    {
         AuthMiddleware::handle();
         $tableId = $_GET['table_id'] ?? null;
-        
+
         if (!$tableId) {
             http_response_code(400);
             echo json_encode(['error' => 'table_id is required']);
@@ -242,7 +249,7 @@ class OrderController extends BaseController {
         }
 
         $db = Database::getConnection();
-        
+
         // Find active order for this table
         $stmt = $db->prepare("
             SELECT id, daily_number, total, status, created_at 
@@ -271,7 +278,8 @@ class OrderController extends BaseController {
         echo json_encode(['order' => $order]);
     }
 
-    public function getDetails(): void {
+    public function getDetails(): void
+    {
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
         if (!$orderId) {
@@ -320,20 +328,23 @@ class OrderController extends BaseController {
         echo json_encode($order);
     }
 
-    public function updateStatus(): void {
+    public function updateStatus(): void
+    {
         $storageDir = __DIR__ . '/../../../scratch';
+        if (!is_dir($storageDir))
+            mkdir($storageDir, 0777, true);
         $logFile = $storageDir . '/qz_debug.log';
         file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() called\n", FILE_APPEND);
 
         $user = AuthMiddleware::handle();
-        
+
         $contentType = isset($_SERVER["CONTENT_TYPE"]) ? trim($_SERVER["CONTENT_TYPE"]) : '';
         if (strpos($contentType, 'application/json') !== false) {
             $data = json_decode(file_get_contents('php://input'), true);
         } else {
             $data = $_POST;
         }
-        
+
         if (empty($data['order_id']) || empty($data['status'])) {
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() failed - missing order_id or status\n", FILE_APPEND);
             http_response_code(400);
@@ -346,38 +357,40 @@ class OrderController extends BaseController {
             $db->beginTransaction();
 
             // Handle receipt upload
-            $receiptPath = null;
+            $receiptBlob = null;
             if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
                 $uploadDir = __DIR__ . '/../../../public/uploads/receipts/';
-                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-                
+                if (!is_dir($uploadDir))
+                    mkdir($uploadDir, 0777, true);
+
                 $extension = pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION);
                 $fileName = 'receipt_' . $data['order_id'] . '_' . time() . '.jpg';
                 $targetFile = $uploadDir . $fileName;
-                
+
                 if ($this->compressImage($_FILES['receipt']['tmp_name'], $targetFile, 60)) {
                     $receiptPath = 'uploads/receipts/' . $fileName;
                 }
             }
-            
+
             $stmt = $db->prepare("SELECT * FROM orders WHERE id = ?");
             $stmt->execute([$data['order_id']]);
             $orderDataFull = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$orderDataFull) throw new Exception("Order #{$data['order_id']} not found");
-            
+
+            if (!$orderDataFull)
+                throw new Exception("Order #{$data['order_id']} not found");
+
             $currentStatus = $orderDataFull['status'];
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order #{$data['order_id']} moving from $currentStatus to {$data['status']}\n", FILE_APPEND);
 
             // If moving to 'en cocina', notify the kitchen
             if ($data['status'] === 'en cocina' && $currentStatus === 'pendiente') {
-                NotificationService::sendToTopic('kitchen_orders', 'Nuevo Pedido', "Nuevo pedido listo para preparar", ['order_id' => (string)$data['order_id'], 'type' => 'new_order']);
-                
+                NotificationService::sendToTopic('kitchen_orders', 'Nuevo Pedido', "Nuevo pedido listo para preparar", ['order_id' => (string) $data['order_id'], 'type' => 'new_order']);
+
                 // Also notify the waiter
                 $stmtWaiter = $db->prepare("SELECT user_id, table_id FROM orders WHERE id = ?");
                 $stmtWaiter->execute([$data['order_id']]);
                 $orderData = $stmtWaiter->fetch();
-                
+
                 if ($orderData && $orderData['user_id']) {
                     $stmtTableNum = $db->prepare("SELECT number FROM restaurant_tables WHERE id = ?");
                     $stmtTableNum->execute([$orderData['table_id']]);
@@ -387,7 +400,7 @@ class OrderController extends BaseController {
                         'waiter_' . $orderData['user_id'],
                         'Preparando Orden',
                         "El pedido de Mesa " . ($tableNum ?? '??') . " está en la cocina",
-                        ['order_id' => (string)$data['order_id'], 'type' => 'order_ready']
+                        ['order_id' => (string) $data['order_id'], 'type' => 'order_ready']
                     );
                 }
             }
@@ -399,7 +412,7 @@ class OrderController extends BaseController {
                 $items = $stmtItems->fetchAll();
                 foreach ($items as $item) {
                     $db->prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND manages_inventory = 1")
-                       ->execute([$item['quantity'], $item['product_id']]);
+                        ->execute([$item['quantity'], $item['product_id']]);
                 }
             }
 
@@ -408,44 +421,45 @@ class OrderController extends BaseController {
             if ($newStatus === 'cobrado') {
                 $paymentMethod = $data['payment_method'] ?? 'efectivo';
                 $bankId = $data['bank_account_id'] ?? null;
-                $cashAmount = (float)($data['cash_amount'] ?? 0);
-                $transferAmount = (float)($data['transfer_amount'] ?? 0);
+                $cashAmount = (float) ($data['cash_amount'] ?? 0);
+                $transferAmount = (float) ($data['transfer_amount'] ?? 0);
+
                 $customerId = $data['customer_id'] ?? null;
-                $amountPaidThisTime = (float)($data['amount'] ?? 0);
+                $amountPaidThisTime = (float) ($data['amount'] ?? 0);
 
                 file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Processing payment for #{$data['order_id']} ($paymentMethod)\n", FILE_APPEND);
 
                 if ($paymentMethod === 'mixto') {
                     if ($cashAmount > 0) {
                         $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
-                           ->execute([$data['order_id'], $cashAmount, $user->id]);
+                            ->execute([$data['order_id'], $cashAmount, $user->id]);
                     }
                     if ($transferAmount > 0) {
-                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_path, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
-                           ->execute([$data['order_id'], $transferAmount, $bankId, $receiptPath, $user->id]);
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_blob, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
+                            ->execute([$data['order_id'], $transferAmount, $bankId, $receiptBlob, $user->id]);
                     }
                 } else {
-                    $amount = $amountPaidThisTime > 0 ? $amountPaidThisTime : (float)$orderDataFull['total'];
+                    $amount = $amountPaidThisTime > 0 ? $amountPaidThisTime : (float) $orderDataFull['total'];
                     if ($paymentMethod === 'efectivo') {
                         $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
-                           ->execute([$data['order_id'], $amount, $user->id]);
+                            ->execute([$data['order_id'], $amount, $user->id]);
                     } else {
-                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_path, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
-                           ->execute([$data['order_id'], $amount, $bankId, $receiptPath, $user->id]);
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_blob, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
+                            ->execute([$data['order_id'], $amount, $bankId, $receiptBlob, $user->id]);
                     }
                 }
 
                 $stmtSum = $db->prepare("SELECT COALESCE(SUM(amount), 0) FROM order_payments WHERE order_id = ?");
                 $stmtSum->execute([$data['order_id']]);
-                $totalPaid = (float)$stmtSum->fetchColumn();
+                $totalPaid = (float) $stmtSum->fetchColumn();
 
-                $orderTotal = (float)$orderDataFull['total'];
+                $orderTotal = (float) $orderDataFull['total'];
                 $newStatus = ($totalPaid < $orderTotal - 0.01) ? 'parcial' : 'cobrado';
 
                 file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order #{$data['order_id']} final status: $newStatus (Paid: $totalPaid / Total: $orderTotal)\n", FILE_APPEND);
 
                 $db->prepare("UPDATE orders SET status = ?, payment_method = ?, customer_id = ?, bank_account_id = ?, cash_amount = ?, transfer_amount = ?, updated_by = ? WHERE id = ?")
-                   ->execute([$newStatus, $paymentMethod, $customerId, $bankId, $cashAmount, $transferAmount, $user->id, $data['order_id']]);
+                    ->execute([$newStatus, $paymentMethod, $customerId, $bankId, $cashAmount, $transferAmount, $user->id, $data['order_id']]);
             } else {
                 $db->prepare("UPDATE orders SET status = ?, updated_by = ? WHERE id = ?")->execute([$newStatus, $user->id, $data['order_id']]);
             }
@@ -456,15 +470,15 @@ class OrderController extends BaseController {
                     $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$orderDataFull['table_id']]);
                 }
                 NotificationService::sendToTopic('new_orders', 'Pedido Finalizado', "Actualizando datos...", [
-                    'order_id' => (string)$data['order_id'], 
+                    'order_id' => (string) $data['order_id'],
                     'type' => 'table_available' // Keeping type for compatibility with existing mobile listener
                 ]);
             }
 
             // Impresión automática al cobrar
             if ($newStatus === 'cobrado') {
-                PrintQueueController::addJob('print_request', ['order_id' => (string)$data['order_id']]);
-                NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string)$data['order_id'], 'type' => 'print_request']);
+                PrintQueueController::addJob('print_request', ['order_id' => (string) $data['order_id']]);
+                NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Imprimiendo nota de venta...", ['order_id' => (string) $data['order_id'], 'type' => 'print_request']);
             }
 
             // Notificar al mesero si está listo
@@ -476,26 +490,28 @@ class OrderController extends BaseController {
                     $stmtTableNum = $db->prepare("SELECT number FROM restaurant_tables WHERE id = ?");
                     $stmtTableNum->execute([$orderData['table_id']]);
                     $tableNum = $stmtTableNum->fetchColumn();
-                    NotificationService::sendToTopic('waiter_' . $orderData['user_id'], 'Orden lista', "Llevar a Mesa " . ($tableNum ?? '??'), ['order_id' => (string)$data['order_id'], 'type' => 'order_ready']);
+                    NotificationService::sendToTopic('waiter_' . $orderData['user_id'], 'Orden lista', "Llevar a Mesa " . ($tableNum ?? '??'), ['order_id' => (string) $data['order_id'], 'type' => 'order_ready']);
                 }
             }
 
             $db->commit();
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() success for #{$data['order_id']}\n", FILE_APPEND);
             echo json_encode(['message' => 'Order status updated successfully']);
-            
+
         } catch (Exception $e) {
-            if ($db->inTransaction()) $db->rollBack();
+            if ($db->inTransaction())
+                $db->rollBack();
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             http_response_code(500);
             echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
         }
     }
 
-    public function getPrintData(): void {
+    public function getPrintData(): void
+    {
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
-        
+
         if (!$orderId) {
             http_response_code(400);
             echo json_encode(['error' => 'order_id required']);
@@ -503,7 +519,7 @@ class OrderController extends BaseController {
         }
 
         $db = Database::getConnection();
-        
+
         $stmt = $db->prepare("
             SELECT o.*, t.number as table_number, u.username as waiter_name,
                    c.name as customer_name, c.identification as customer_id_number, c.email as customer_email, c.phone as customer_phone
@@ -544,7 +560,7 @@ class OrderController extends BaseController {
 
         if ((isset($_GET['download']) && $_GET['download'] == 1) || (isset($_GET['view']) && $_GET['view'] == 1)) {
             $paymentMethodLabel = ucfirst($order['payment_method'] ?? 'Pendiente');
-            
+
             $html = "
             <html>
             <head>
@@ -592,7 +608,7 @@ class OrderController extends BaseController {
                         <th>Descripción</th>
                         <th class='text-right'>Total</th>
                     </tr>";
-            
+
             foreach ($order['items'] as $item) {
                 $subtotal = number_format($item['quantity'] * $item['price'], 2);
                 $html .= "<tr>
@@ -601,14 +617,14 @@ class OrderController extends BaseController {
                             <td class='text-right'>\${$subtotal}</td>
                           </tr>";
             }
-            
+
             $html .= "
                 <tr class='total-row'>
                     <td colspan='2' class='text-right'>TOTAL</td>
                     <td class='text-right'>$" . number_format($order['total'], 2) . "</td>
                 </tr>
             </table>";
- 
+
             if (!empty($order['payments'])) {
                 $html .= "<div style='margin-top: 10px; border-top: 1px dashed #000; padding-top: 5px;'>
                             <p style='margin: 0 0 5px 0; font-weight: bold; font-size: 11px;'>MÉTODOS DE PAGO:</p>";
@@ -628,21 +644,21 @@ class OrderController extends BaseController {
                             PENDIENTE DE PAGO
                           </div>";
             }
- 
+
             $html .= "<div class='footer'>
                 <p>¡Gracias por su preferencia!</p>
             </div>
             </body>
             </html>";
- 
+
             $dompdf = new \Dompdf\Dompdf();
             $dompdf->loadHtml($html);
             // 58mm is approx 164.41 points.
-            $dompdf->setPaper(array(0, 0, 164.41, 800)); 
+            $dompdf->setPaper(array(0, 0, 164.41, 800));
             $dompdf->render();
-            
+
             $disposition = (isset($_GET['download']) && $_GET['download'] == 1) ? 'attachment' : 'inline';
-            
+
             header("Content-Type: application/pdf");
             header("Content-Disposition: {$disposition}; filename=\"orden_{$order['id']}.pdf\"");
             echo $dompdf->output();
@@ -652,15 +668,16 @@ class OrderController extends BaseController {
         echo json_encode($order);
     }
 
-    public function update(): void {
+    public function update(): void
+    {
         $storageDir = NotificationService::getStoragePath();
         $logFile = $storageDir . '/qz_debug.log';
-        
+
         @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order update() called\n", FILE_APPEND);
-        
+
         $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
-        
+
         $orderId = $data['order_id'] ?? null;
         if (!$orderId) {
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() failed - order_id missing\n", FILE_APPEND);
@@ -670,48 +687,51 @@ class OrderController extends BaseController {
         }
 
         $db = Database::getConnection();
-        
+
         try {
             $db->beginTransaction();
-            
+
             // Get current order
             $stmt = $db->prepare("SELECT status, table_id FROM orders WHERE id = ?");
             $stmt->execute([$orderId]);
             $order = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$order) throw new Exception("Order not found");
-            if ($order['status'] === 'cobrado') throw new Exception("Cannot edit a paid order");
+
+            if (!$order)
+                throw new Exception("Order not found");
+            if ($order['status'] === 'cobrado')
+                throw new Exception("Cannot edit a paid order");
 
             // Update items if provided
             if (isset($data['items']) && is_array($data['items'])) {
                 file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Updating items for order $orderId\n", FILE_APPEND);
                 // Delete existing items
                 $db->prepare("DELETE FROM order_items WHERE order_id = ?")->execute([$orderId]);
-                
+
                 $newTotal = 0;
                 $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
-                
+
                 foreach ($data['items'] as $item) {
                     $stmtPrice = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
                     $stmtPrice->execute([$item['product_id']]);
                     $product = $stmtPrice->fetch(PDO::FETCH_ASSOC);
-                    
-                    if ($product === false) throw new Exception("Product ID {$item['product_id']} not found");
-                    
-                    $price = (float)$product['price'];
+
+                    if ($product === false)
+                        throw new Exception("Product ID {$item['product_id']} not found");
+
+                    $price = (float) $product['price'];
                     $finalTableId = array_key_exists('table_id', $data) ? $data['table_id'] : $order['table_id'];
                     $isTakeawayOrder = ($finalTableId === null);
-                    
+
                     if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
-                        $price += (float)($product['takeaway_surcharge'] ?? 0);
+                        $price += (float) ($product['takeaway_surcharge'] ?? 0);
                     }
-                    
+
                     $subtotal = $price * $item['quantity'];
                     $newTotal += $subtotal;
-                    
+
                     $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $item['notes'] ?? null]);
                 }
-                
+
                 // Update order total
                 $db->prepare("UPDATE orders SET total = ?, updated_by = ? WHERE id = ?")->execute([$newTotal, $user->id, $orderId]);
             }
@@ -738,21 +758,23 @@ class OrderController extends BaseController {
 
             // Notificar a todos que hubo una actualización
             NotificationService::sendToTopic('new_orders', 'Pedido Actualizado', "El pedido #$orderId ha sido modificado.", [
-                'order_id' => (string)$orderId,
+                'order_id' => (string) $orderId,
                 'type' => 'refresh'
             ]);
 
             echo json_encode(['message' => 'Order updated successfully']);
-            
+
         } catch (Exception $e) {
-            if ($db->inTransaction()) $db->rollBack();
+            if ($db->inTransaction())
+                $db->rollBack();
             @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
             http_response_code(500);
             echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
         }
     }
 
-    public function requestRemotePrint(): void {
+    public function requestRemotePrint(): void
+    {
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
         if (!$orderId) {
@@ -762,21 +784,22 @@ class OrderController extends BaseController {
         }
 
         PrintQueueController::addJob('print_request', [
-            'order_id' => (string)$orderId
+            'order_id' => (string) $orderId
         ]);
 
         NotificationService::sendToTopic('new_orders', 'Imprimir Nota', "Re-imprimiendo nota de venta...", [
-            'order_id' => (string)$orderId, 
+            'order_id' => (string) $orderId,
             'type' => 'print_request'
         ]);
 
         echo json_encode(['message' => 'Print request sent']);
     }
 
-    public function requestRemoteKitchenPrint(): void {
+    public function requestRemoteKitchenPrint(): void
+    {
         $storageDir = NotificationService::getStoragePath();
         $logFile = $storageDir . '/qz_debug.log';
-        
+
         @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint called\n", FILE_APPEND);
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
@@ -789,12 +812,12 @@ class OrderController extends BaseController {
 
         file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: adding job for order $orderId\n", FILE_APPEND);
         PrintQueueController::addJob('print_kitchen_request', [
-            'order_id' => (string)$orderId
+            'order_id' => (string) $orderId
         ]);
 
         file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Sending FCM notification for kitchen print order $orderId\n", FILE_APPEND);
         $fcmResult = NotificationService::sendToTopic('new_orders', 'Imprimir Comanda', "Imprimiendo comanda de cocina...", [
-            'order_id' => (string)$orderId, 
+            'order_id' => (string) $orderId,
             'type' => 'print_kitchen_request'
         ]);
         file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: FCM result: " . ($fcmResult ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
@@ -802,10 +825,11 @@ class OrderController extends BaseController {
         echo json_encode(['message' => 'Kitchen print request sent']);
     }
 
-    public function getKitchenPrintData(): void {
+    public function getKitchenPrintData(): void
+    {
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
-        
+
         if (!$orderId) {
             http_response_code(400);
             echo json_encode(['error' => 'order_id required']);
@@ -813,7 +837,7 @@ class OrderController extends BaseController {
         }
 
         $db = Database::getConnection();
-        
+
         $stmt = $db->prepare("
             SELECT o.*, t.number as table_number
             FROM orders o
@@ -841,7 +865,7 @@ class OrderController extends BaseController {
         if (isset($_GET['raw_html']) && $_GET['raw_html'] == 1) {
             $isTakeaway = is_null($order['table_number']);
             $location = $isTakeaway ? "PARA LLEVAR" : "MESA {$order['table_number']}";
-            
+
             $html = "
             <html>
             <head>
@@ -881,7 +905,7 @@ class OrderController extends BaseController {
                     <p>DETALLE DEL PEDIDO:</p>
                 </div>
                 <table class='table'>";
-            
+
             foreach ($order['items'] as $item) {
                 $html .= "<tr>
                             <td style='width: 20%;'>{$item['quantity']}x</td>
@@ -892,22 +916,22 @@ class OrderController extends BaseController {
                 $html .= "  </td>
                           </tr>";
             }
-            
+
             $html .= "</table>";
- 
+
             if (!empty($order['notes'])) {
                 $html .= "<div class='notes'>
                             <h4>NOTAS GENERALES:</h4>
                             <p>{$order['notes']}</p>
                           </div>";
             }
- 
+
             $html .= "<div class='footer'>
                 <p>------ FIN DE COMANDA ------</p>
             </div>
             </body>
             </html>";
- 
+
             header("Content-Type: text/html");
             echo $html;
             exit;
@@ -916,10 +940,11 @@ class OrderController extends BaseController {
         echo json_encode($order);
     }
 
-    public function cancel(): void {
+    public function cancel(): void
+    {
         $user = AuthMiddleware::handle();
         $data = json_decode(file_get_contents('php://input'), true);
-        
+
         $orderId = $data['order_id'] ?? null;
         if (!$orderId) {
             http_response_code(400);
@@ -930,13 +955,15 @@ class OrderController extends BaseController {
         $db = Database::getConnection();
         try {
             $db->beginTransaction();
-            
+
             $stmt = $db->prepare("SELECT status, table_id FROM orders WHERE id = ?");
             $stmt->execute([$orderId]);
             $order = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$order) throw new Exception("Order not found");
-            if ($order['status'] === 'cancelado') throw new Exception("Order is already cancelled");
+
+            if (!$order)
+                throw new Exception("Order not found");
+            if ($order['status'] === 'cancelado')
+                throw new Exception("Order is already cancelled");
 
             // 1. Revert stock if it was discounted
             if (in_array($order['status'], ['en cocina', 'entregado', 'cobrado', 'parcial'])) {
@@ -945,7 +972,7 @@ class OrderController extends BaseController {
                 $items = $stmtItems->fetchAll();
                 foreach ($items as $item) {
                     $db->prepare("UPDATE products SET stock = stock + ? WHERE id = ? AND manages_inventory = 1")
-                       ->execute([$item['quantity'], $item['product_id']]);
+                        ->execute([$item['quantity'], $item['product_id']]);
                 }
             }
 
@@ -954,23 +981,25 @@ class OrderController extends BaseController {
 
             // 3. Update order status
             $db->prepare("UPDATE orders SET status = 'cancelado', updated_by = ? WHERE id = ?")
-               ->execute([$user->id, $orderId]);
+                ->execute([$user->id, $orderId]);
 
             // 4. Free table
             if ($order['table_id']) {
                 $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")
-                   ->execute([$order['table_id']]);
+                    ->execute([$order['table_id']]);
             }
 
             $db->commit();
             echo json_encode(['message' => 'Order cancelled successfully']);
         } catch (Exception $e) {
-            if ($db->inTransaction()) $db->rollBack();
+            if ($db->inTransaction())
+                $db->rollBack();
             http_response_code(500);
             echo json_encode(['error' => 'Cancellation failed', 'details' => $e->getMessage()]);
         }
     }
-    public function getTransfers(): void {
+    public function getTransfers(): void
+    {
         $user = AuthMiddleware::handle();
         if ($user->role !== 'admin') {
             http_response_code(403);
@@ -1007,29 +1036,39 @@ class OrderController extends BaseController {
 
         echo json_encode([
             'date' => $date,
-            'total' => (float)$total,
+            'total' => (float) $total,
             'transfers' => $transfers
         ]);
     }
 
-    private function compressImage($source, $destination, $quality) {
+    private function compressImage($source, $destination, $quality)
+    {
         try {
             if (!function_exists('imagecreatefromjpeg') || !function_exists('getimagesize')) {
                 return move_uploaded_file($source, $destination);
             }
 
             $info = getimagesize($source);
-            if (!$info) return move_uploaded_file($source, $destination);
+            if (!$info)
+                return move_uploaded_file($source, $destination);
 
             $mime = $info['mime'];
             switch ($mime) {
-                case 'image/jpeg': $image = @imagecreatefromjpeg($source); break;
-                case 'image/gif':  $image = @imagecreatefromgif($source); break;
-                case 'image/png':  $image = @imagecreatefrompng($source); break;
-                default: return move_uploaded_file($source, $destination);
+                case 'image/jpeg':
+                    $image = @imagecreatefromjpeg($source);
+                    break;
+                case 'image/gif':
+                    $image = @imagecreatefromgif($source);
+                    break;
+                case 'image/png':
+                    $image = @imagecreatefrompng($source);
+                    break;
+                default:
+                    return move_uploaded_file($source, $destination);
             }
 
-            if (!$image) return move_uploaded_file($source, $destination);
+            if (!$image)
+                return move_uploaded_file($source, $destination);
 
             $width = imagesx($image);
             $height = imagesy($image);
@@ -1043,7 +1082,7 @@ class OrderController extends BaseController {
                     $newWidth = ($width / $height) * $maxSize;
                 }
                 $tmp = imagecreatetruecolor($newWidth, $newHeight);
-                imagecopyresampled($tmp, $image, 0, 0, 0, 0, (int)$newWidth, (int)$newHeight, $width, $height);
+                imagecopyresampled($tmp, $image, 0, 0, 0, 0, (int) $newWidth, (int) $newHeight, $width, $height);
                 imagedestroy($image);
                 $image = $tmp;
             }
