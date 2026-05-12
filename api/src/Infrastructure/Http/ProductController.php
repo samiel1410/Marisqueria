@@ -55,8 +55,8 @@ class ProductController extends BaseController {
         $total = (int)$stmtCount->fetchColumn();
         
         $sql = "
-            SELECT p.*, c.name as category_name, br.name as brand_name,
-                   (CASE WHEN ps.{$currentDay} = 1 THEN 1 ELSE 0 END) as is_daily,
+            SELECT p.*, ANY_VALUE(c.name) as category_name, ANY_VALUE(br.name) as brand_name,
+                   ANY_VALUE(CASE WHEN ps.{$currentDay} = 1 THEN 1 ELSE 0 END) as is_daily,
                    " . ($branchId ? "COALESCE(SUM(pbs.stock), 0)" : "COALESCE(SUM(pbs.stock), p.stock)") . " as current_stock
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
@@ -65,7 +65,7 @@ class ProductController extends BaseController {
             LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
             $whereSql
             GROUP BY p.id
-            ORDER BY c.name ASC, p.name ASC
+            ORDER BY category_name ASC, p.name ASC
             LIMIT $limit OFFSET $offset
         ";
         

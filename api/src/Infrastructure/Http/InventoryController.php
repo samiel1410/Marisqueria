@@ -132,8 +132,8 @@ class InventoryController extends BaseController {
         $sql = "
             SELECT 
                 p.id, p.name, p.price, p.unit, p.min_stock, p.manages_inventory,
-                c.name as category_name,
-                br.name as brand_name,
+                ANY_VALUE(c.name) as category_name,
+                ANY_VALUE(br.name) as brand_name,
                 COALESCE(SUM(pbs.stock), p.stock) as current_stock
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
@@ -141,7 +141,7 @@ class InventoryController extends BaseController {
             LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
             $whereSql
             GROUP BY p.id
-            ORDER BY c.name, p.name
+            ORDER BY category_name, p.name
         ";
         
         if ($branchId) {
@@ -172,14 +172,14 @@ class InventoryController extends BaseController {
         $sql = "
             SELECT 
                 p.id, p.name, p.price, p.unit, p.min_stock, p.manages_inventory,
-                c.name as category_name,
+                ANY_VALUE(c.name) as category_name,
                 COALESCE(SUM(pbs.stock), p.stock) as current_stock
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
             LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
             $whereSql
             GROUP BY p.id
-            ORDER BY c.name, p.name
+            ORDER BY category_name, p.name
         ";
         
         $stmt = $db->prepare($sql);

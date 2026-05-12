@@ -28,8 +28,12 @@ class BaseController {
         echo json_encode($data);
     }
     
-    protected function sendError(string $message, int $statusCode = 400): void {
-        $this->sendJson(['error' => $message], $statusCode);
+    protected function sendError(string $message, int $statusCode = 400, $details = null): void {
+        $response = ['error' => $message];
+        if ($details !== null) {
+            $response['details'] = $details;
+        }
+        $this->sendJson($response, $statusCode);
     }
     
     protected function sendSuccess(array $data = [], string $message = 'Success'): void {
