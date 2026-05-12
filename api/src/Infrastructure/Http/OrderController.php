@@ -7,21 +7,16 @@ use App\Infrastructure\Services\NotificationService;
 use PDO;
 use Exception;
 
-class OrderController {
+class OrderController extends BaseController {
     
     public function store(): void {
-        $storageDir = NotificationService::getStoragePath();
-        $logFile = $storageDir . '/qz_debug.log';
-        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() called\n", FILE_APPEND);
-
+        $db = null;
         try {
             $user = AuthMiddleware::handle(); 
             $data = json_decode(file_get_contents('php://input'), true);
             
             if (!isset($data['table_id']) || empty($data['items']) || !is_array($data['items'])) {
-                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() failed - invalid input data\n", FILE_APPEND);
-                http_response_code(400);
-                echo json_encode(['error' => 'table_id and items array are required']);
+                $this->sendError('table_id and items array are required', 400);
                 return;
             }
 
@@ -30,15 +25,13 @@ class OrderController {
             // Check if there is an open cash session
             $stmtSession = $db->query("SELECT id FROM cash_sessions WHERE status = 'open' LIMIT 1");
             if (!$stmtSession->fetch()) {
-                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() failed - no open cash session\n", FILE_APPEND);
-                http_response_code(403);
-                echo json_encode(['error' => 'Debe abrir una caja antes de poder registrar pedidos.']);
+                $this->sendError('Debe abrir una caja antes de poder registrar pedidos.', 403);
                 return;
             }
             
             $db->beginTransaction();
             
-            // Check for existing active order if table_id is provided
+            // Check for existing active order
             $existingOrder = null;
             if ($data['table_id'] !== null) {
                 $stmtExist = $db->prepare("SELECT id, total, user_id, daily_number FROM orders WHERE table_id = ? AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1");
@@ -46,7 +39,6 @@ class OrderController {
                 $existingOrder = $stmtExist->fetch(PDO::FETCH_ASSOC);
             }
 
-            // Calculate new items total
             $newItemsTotal = 0;
             foreach ($data['items'] as $item) {
                 $stmt = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
@@ -64,14 +56,11 @@ class OrderController {
                 }
             }
 
-            $nextDailyNum = null;
             if ($existingOrder) {
                 $orderId = $existingOrder['id'];
                 $newTotal = $existingOrder['total'] + $newItemsTotal;
                 $db->prepare("UPDATE orders SET total = ?, updated_by = ? WHERE id = ?")->execute([$newTotal, $user->id, $orderId]);
-                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() updated existing order #$orderId\n", FILE_APPEND);
             } else {
-                // Get next daily number
                 $stmtNum = $db->prepare("SELECT COALESCE(MAX(daily_number), 0) FROM orders WHERE DATE(created_at) = CURRENT_DATE");
                 $stmtNum->execute();
                 $nextDailyNum = (int)$stmtNum->fetchColumn() + 1;
@@ -79,10 +68,8 @@ class OrderController {
                 $stmt = $db->prepare("INSERT INTO orders (table_id, user_id, total, status, daily_number) VALUES (?, ?, ?, 'pendiente', ?)");
                 $stmt->execute([$data['table_id'], $user->id, $newItemsTotal, $nextDailyNum]);
                 $orderId = $db->lastInsertId();
-                file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() created new order #$orderId\n", FILE_APPEND);
             }
 
-            // Insert Items
             $stmtItem = $db->prepare("INSERT INTO order_items (order_id, product_id, quantity, price, notes) VALUES (?, ?, ?, ?, ?)");
             foreach ($data['items'] as $item) {
                  $stmtPrice = $db->prepare("SELECT price, is_takeaway, takeaway_surcharge FROM products WHERE id = ?");
@@ -94,9 +81,7 @@ class OrderController {
                  if ($isTakeawayOrder && ($product['is_takeaway'] == 1)) {
                      $price += (float)($product['takeaway_surcharge'] ?? 0);
                  }
-                 
-                 $notes = $item['notes'] ?? null;
-                 $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $notes]);
+                 $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $item['notes'] ?? null]);
             }
             
             if ($data['table_id'] !== null) {
@@ -105,34 +90,15 @@ class OrderController {
 
             $db->commit();
 
-            // Notify kitchen
-            $notifTitle = $existingOrder ? 'Orden Actualizada' : 'Nueva Orden';
-            $notifBody = $existingOrder 
-                ? 'Se han añadido productos a la Mesa ' . ($data['table_id'] ?? '??')
-                : 'Se ha recibido un nuevo pedido para la Mesa ' . ($data['table_id'] ?? '??');
-
-            NotificationService::sendToTopic('new_orders', $notifTitle, $notifBody, [
+            NotificationService::sendToTopic('new_orders', $existingOrder ? 'Orden Actualizada' : 'Nueva Orden', 'Actualizando...', [
                 'order_id' => (string)$orderId, 
-                'table_id' => (string)($data['table_id'] ?? ''),
                 'type' => 'print_kitchen_request'
             ]);
             
-            $dailyNumberToReturn = $nextDailyNum ?? ($existingOrder['daily_number'] ?? null);
-            if (!$dailyNumberToReturn) {
-                $stmtNumFetch = $db->prepare("SELECT daily_number FROM orders WHERE id = ?");
-                $stmtNumFetch->execute([$orderId]);
-                $dailyNumberToReturn = $stmtNumFetch->fetchColumn();
-            }
-            
-            http_response_code(201);
-            echo json_encode(['message' => $existingOrder ? 'Order updated' : 'Order created', 'order_id' => $orderId, 'daily_number' => $dailyNumberToReturn]);
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() success for order #$orderId\n", FILE_APPEND);
-
+            $this->sendJson(['order_id' => $orderId], 201);
         } catch (Exception $e) {
             if ($db && $db->inTransaction()) $db->rollBack();
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: store() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
-            http_response_code(500);
-            echo json_encode(['error' => 'Failed to process order', 'details' => $e->getMessage()]);
+            $this->sendError('Failed to process order: ' . $e->getMessage(), 500);
         }
     }
     
@@ -233,32 +199,36 @@ class OrderController {
     }
 
     public function getKitchenOrders(): void {
-        AuthMiddleware::handle();
-        $db = Database::getConnection();
-        
-        $stmt = $db->query("
-            SELECT o.*, t.number as table_number, u.username as waiter_name
-            FROM orders o
-            LEFT JOIN restaurant_tables t ON o.table_id = t.id
-            LEFT JOIN users u ON o.user_id = u.id
-            WHERE o.status IN ('pendiente', 'en cocina')
-            ORDER BY o.created_at ASC
-        ");
-        
-        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        foreach ($orders as &$order) {
-            $stmtItems = $db->prepare("
-                SELECT oi.*, p.name as product_name
-                FROM order_items oi
-                JOIN products p ON oi.product_id = p.id
-                WHERE oi.order_id = ?
+        try {
+            AuthMiddleware::handle();
+            $db = Database::getConnection();
+            
+            $stmt = $db->query("
+                SELECT o.*, t.number as table_number, u.username as waiter_name
+                FROM orders o
+                LEFT JOIN restaurant_tables t ON o.table_id = t.id
+                LEFT JOIN users u ON o.user_id = u.id
+                WHERE o.status IN ('pendiente', 'en cocina')
+                ORDER BY o.created_at ASC
             ");
-            $stmtItems->execute([$order['id']]);
-            $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+            
+            $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($orders as &$order) {
+                $stmtItems = $db->prepare("
+                    SELECT oi.*, p.name as product_name
+                    FROM order_items oi
+                    JOIN products p ON oi.product_id = p.id
+                    WHERE oi.order_id = ?
+                ");
+                $stmtItems->execute([$order['id']]);
+                $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+            }
+            
+            $this->sendJson($orders);
+        } catch (Exception $e) {
+            $this->sendError('Error fetching kitchen orders: ' . $e->getMessage(), 500);
         }
-        
-        echo json_encode($orders);
     }
 
     public function getByTable(): void {

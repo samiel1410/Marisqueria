@@ -6,14 +6,16 @@ use PDO;
 class ProductController extends BaseController {
 
     public function index(): void {
+        $sql = "";
+        $execParams = [];
+        $currentDay = strtolower(date('l'));
+        
         try {
             $db = Database::getConnection();
             
-            $currentDay = isset($_GET['day']) ? strtolower($_GET['day']) : strtolower(date('l'));
+            $dayParam = isset($_GET['day']) ? strtolower($_GET['day']) : $currentDay;
             $allowedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-            if (!in_array($currentDay, $allowedDays)) {
-                $currentDay = strtolower(date('l'));
-            }
+            $currentDay = in_array($dayParam, $allowedDays) ? $dayParam : $currentDay;
             
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
             if ($page < 1) $page = 1;
@@ -22,7 +24,7 @@ class ProductController extends BaseController {
             
             $search = $_GET['search'] ?? '';
             $categoryId = $_GET['category_id'] ?? null;
-            $branchId = $_GET['branch_id'] ?? null; // Nota: el frontend a veces manda branch_id como filtro de sucursal
+            $branchId = $_GET['branch_id'] ?? null;
             
             $where = [];
             $params = [];
@@ -40,7 +42,7 @@ class ProductController extends BaseController {
             }
 
             if (!empty($branchId)) {
-                $where[] = "EXISTS (SELECT 1 FROM product_branch_stock pbs WHERE pbs.product_id = p.id AND pbs.branch_id = ?)";
+                $where[] = "EXISTS (SELECT 1 FROM product_branch_stock pbs2 WHERE pbs2.product_id = p.id AND pbs2.branch_id = ?)";
                 $params[] = $branchId;
             }
             
@@ -55,36 +57,34 @@ class ProductController extends BaseController {
             $stmtCount->execute($params);
             $total = (int)$stmtCount->fetchColumn();
             
+            // Subquery approach to avoid GROUP BY issues and ANY_VALUE compatibility
             $sql = "
-                SELECT p.*, ANY_VALUE(c.name) as category_name, ANY_VALUE(br.name) as brand_name,
-                    ANY_VALUE(CASE WHEN ps.{$currentDay} = 1 THEN 1 ELSE 0 END) as is_daily,
-                    " . ($branchId ? "COALESCE(SUM(pbs.stock), 0)" : "COALESCE(SUM(pbs.stock), p.stock)") . " as current_stock
+                SELECT p.*, c.name as category_name, br.name as brand_name,
+                    (SELECT 1 FROM product_schedules ps WHERE ps.product_id = p.id AND ps.{$currentDay} = 1 LIMIT 1) as is_daily,
+                    (SELECT COALESCE(SUM(pbs.stock), p.stock) FROM product_branch_stock pbs WHERE pbs.product_id = p.id " . ($branchId ? " AND pbs.branch_id = ?" : "") . ") as current_stock
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
                 LEFT JOIN brands br ON p.brand_id = br.id
-                LEFT JOIN product_schedules ps ON p.id = ps.product_id
-                LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
                 $whereSql
-                GROUP BY p.id
                 ORDER BY category_name ASC, p.name ASC
                 LIMIT $limit OFFSET $offset
             ";
             
             $stmt = $db->prepare($sql);
             
-            $execParams = $params;
             if ($branchId) {
-                // El placeholder de branch_id en el JOIN aparece antes que los del WHERE
+                // The placeholder for branch_id is in the subquery, which comes BEFORE the WHERE placeholders
                 $execParams = array_merge([$branchId], $params);
+            } else {
+                $execParams = $params;
             }
 
             $stmt->execute($execParams);
-            
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Map current_stock to stock for frontend compatibility
             foreach ($results as &$r) {
-                $r['stock'] = $r['current_stock'];
+                $r['stock'] = $r['current_stock'] ?? $r['stock'] ?? 0;
+                $r['is_daily'] = (int)($r['is_daily'] ?? 0);
             }
 
             $this->sendJson([
@@ -95,16 +95,14 @@ class ProductController extends BaseController {
                     'limit' => $limit,
                     'pages' => ceil($total / $limit)
                 ],
-                // Backward compatibility
                 'total' => $total,
                 'page' => $page,
                 'limit' => $limit
             ]);
         } catch (\Exception $e) {
             $this->sendError('Error al obtener productos: ' . $e->getMessage(), 500, [
-                'sql' => $sql ?? null,
-                'params' => $execParams ?? null,
-                'debug_current_day' => $currentDay ?? null,
+                'sql' => $sql,
+                'params' => $execParams,
                 'trace' => $e->getTraceAsString()
             ]);
         }
@@ -125,7 +123,6 @@ class ProductController extends BaseController {
         $product = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$product) { $this->sendError('Product not found', 404); return; }
 
-        // Get branch stocks
         $stmt2 = $db->prepare("
             SELECT pbs.*, b.name as branch_name
             FROM product_branch_stock pbs
@@ -140,7 +137,6 @@ class ProductController extends BaseController {
 
     public function store(): void {
         try {
-            // Handle multipart form (image upload) or JSON
             $isMultipart = isset($_POST['name']);
             if ($isMultipart) {
                 $data = $_POST;
@@ -176,11 +172,8 @@ class ProductController extends BaseController {
             ]);
             $productId = (int)$db->lastInsertId();
 
-            // Save branch stocks if provided
             if (!empty($data['branch_stocks'])) {
-                $branchStocks = is_string($data['branch_stocks'])
-                    ? json_decode($data['branch_stocks'], true)
-                    : $data['branch_stocks'];
+                $branchStocks = is_string($data['branch_stocks']) ? json_decode($data['branch_stocks'], true) : $data['branch_stocks'];
                 $this->saveBranchStocks($db, $productId, $branchStocks);
             }
 
@@ -203,8 +196,6 @@ class ProductController extends BaseController {
             if (!$id) { $this->sendError('ID required', 400); return; }
 
             $db = Database::getConnection();
-
-            // Handle image upload
             $imagePath = $data['image_path'] ?? null;
             if (!empty($_FILES['image']['tmp_name'])) {
                 $imagePath = $this->uploadImage($_FILES['image']);
@@ -228,11 +219,8 @@ class ProductController extends BaseController {
                 $db->prepare("UPDATE products SET " . implode(', ', $fields) . " WHERE id=?")->execute($params);
             }
 
-            // Update branch stocks
             if (isset($data['branch_stocks'])) {
-                $branchStocks = is_string($data['branch_stocks'])
-                    ? json_decode($data['branch_stocks'], true)
-                    : $data['branch_stocks'];
+                $branchStocks = is_string($data['branch_stocks']) ? json_decode($data['branch_stocks'], true) : $data['branch_stocks'];
                 if (is_array($branchStocks)) {
                     $this->saveBranchStocks($db, $id, $branchStocks);
                 }
@@ -268,8 +256,6 @@ class ProductController extends BaseController {
 
     private function uploadImage(array $file): ?string {
         $uploadDir = __DIR__ . '/../../public/uploads/products/';
-        
-        // Si estamos en Vercel o el directorio no es escribible, usamos Base64
         $isVercel = strpos(__DIR__, '/var/task') !== false;
         if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) || !@is_writable($uploadDir)) {
             $type = pathinfo($file['name'], PATHINFO_EXTENSION);
@@ -279,11 +265,9 @@ class ProductController extends BaseController {
 
         $filename = uniqid() . '-' . basename($file['name']);
         $targetPath = $uploadDir . $filename;
-
         if (move_uploaded_file($file['tmp_name'], $targetPath)) {
             return '/uploads/products/' . $filename;
         }
-
         return null;
     }
 }

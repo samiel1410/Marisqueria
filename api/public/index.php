@@ -172,4 +172,15 @@ $router->add('GET', '/reset-admin', function() {
     echo json_encode(['message' => 'Contraseña de admin actualizada a: admin123']);
 });
 
-$router->run($method, $uri);
+try {
+    $router->run($method, $uri);
+} catch (Throwable $e) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => 'Global Error: ' . $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => $e->getTraceAsString()
+    ]);
+}
