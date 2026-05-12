@@ -359,16 +359,12 @@ class OrderController extends BaseController
             // Handle receipt upload
             $receiptBlob = null;
             if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
-                $uploadDir = __DIR__ . '/../../../public/uploads/receipts/';
-                if (!is_dir($uploadDir))
-                    mkdir($uploadDir, 0777, true);
-
-                $extension = pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION);
-                $fileName = 'receipt_' . $data['order_id'] . '_' . time() . '.jpg';
-                $targetFile = $uploadDir . $fileName;
-
-                if ($this->compressImage($_FILES['receipt']['tmp_name'], $targetFile, 60)) {
-                    $receiptPath = 'uploads/receipts/' . $fileName;
+                $tempFile = tempnam(sys_get_temp_dir(), 'rcpt_');
+                if ($this->compressImage($_FILES['receipt']['tmp_name'], $tempFile, 60)) {
+                    $receiptBlob = file_get_contents($tempFile);
+                    @unlink($tempFile);
+                } else {
+                    $receiptBlob = file_get_contents($_FILES['receipt']['tmp_name']);
                 }
             }
 
