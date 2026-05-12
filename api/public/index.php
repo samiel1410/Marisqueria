@@ -4,11 +4,17 @@ ini_set('display_errors', '0');
 
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if (!(error_reporting() & $errno)) return false;
+    
+    $logMsg = date('Y-m-d H:i:s') . " [Error $errno] $errstr in $errfile on line $errline\n";
+    @file_put_contents(__DIR__ . '/../scratch/php_errors.log', $logMsg, FILE_APPEND);
+
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'error' => 'Early PHP Error',
-        'message' => $errstr
+        'message' => $errstr,
+        'file' => $errfile,
+        'line' => $errline
     ]);
     exit;
 });
@@ -16,11 +22,16 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
 register_shutdown_function(function() {
     $error = error_get_last();
     if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        $logMsg = date('Y-m-d H:i:s') . " [FATAL] {$error['message']} in {$error['file']} on line {$error['line']}\n";
+        @file_put_contents(__DIR__ . '/../scratch/php_errors.log', $logMsg, FILE_APPEND);
+
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'error' => 'Fatal Shutdown Error',
-            'message' => $error['message']
+            'message' => $error['message'],
+            'file' => $error['file'],
+            'line' => $error['line']
         ]);
     }
 });
