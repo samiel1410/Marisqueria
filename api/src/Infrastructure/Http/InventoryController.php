@@ -6,26 +6,30 @@ class InventoryController extends BaseController {
 
     // GET /inventory/movements?product_id=X
     public function movements(): void {
-        $productId = $_GET['product_id'] ?? null;
-        $db = Database::getConnection();
-        
-        $sql = "
-            SELECT m.*, b.name as branch_name, u.username as user_name, p.name as product_name
-            FROM inventory_movements m
-            LEFT JOIN branches b ON m.branch_id = b.id
-            LEFT JOIN users u ON m.user_id = u.id
-            LEFT JOIN products p ON m.product_id = p.id
-        ";
-        $params = [];
-        if ($productId) {
-            $sql .= " WHERE m.product_id = ?";
-            $params[] = $productId;
+        try {
+            $productId = $_GET['product_id'] ?? null;
+            $db = Database::getConnection();
+            
+            $sql = "
+                SELECT m.*, b.name as branch_name, u.username as user_name, p.name as product_name
+                FROM inventory_movements m
+                LEFT JOIN branches b ON m.branch_id = b.id
+                LEFT JOIN users u ON m.user_id = u.id
+                LEFT JOIN products p ON m.product_id = p.id
+            ";
+            $params = [];
+            if ($productId) {
+                $sql .= " WHERE m.product_id = ?";
+                $params[] = $productId;
+            }
+            $sql .= " ORDER BY m.created_at DESC";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $this->sendJson(['movements' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+        } catch (\Exception $e) {
+            $this->sendError('Error al obtener movimientos: ' . $e->getMessage(), 500);
         }
-        $sql .= " ORDER BY m.created_at DESC";
-        
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
-        $this->sendJson(['movements' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
     }
 
     // POST /inventory/movement  { product_id, branch_id, type, quantity, reason }
@@ -112,45 +116,49 @@ class InventoryController extends BaseController {
 
     // GET /inventory/report?filter=[all|manages|not_manages]&branch_id=X
     public function report(): void {
-        AuthMiddleware::handle(); // Ensure user is logged in
-        $db = Database::getConnection();
-        
-        $filter = $_GET['filter'] ?? 'all';
-        $branchId = $_GET['branch_id'] ?? null;
-        
-        $where = [];
-        $params = [];
-        
-        if ($filter === 'manages') {
-            $where[] = "p.manages_inventory = 1";
-        } elseif ($filter === 'not_manages') {
-            $where[] = "p.manages_inventory = 0";
+        try {
+            AuthMiddleware::handle(); // Ensure user is logged in
+            $db = Database::getConnection();
+            
+            $filter = $_GET['filter'] ?? 'all';
+            $branchId = $_GET['branch_id'] ?? null;
+            
+            $where = [];
+            $params = [];
+            
+            if ($filter === 'manages') {
+                $where[] = "p.manages_inventory = 1";
+            } elseif ($filter === 'not_manages') {
+                $where[] = "p.manages_inventory = 0";
+            }
+            
+            $whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+            
+            $sql = "
+                SELECT 
+                    p.id, p.name, p.price, p.unit, p.min_stock, p.manages_inventory,
+                    ANY_VALUE(c.name) as category_name,
+                    ANY_VALUE(br.name) as brand_name,
+                    COALESCE(SUM(pbs.stock), p.stock) as current_stock
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                LEFT JOIN brands br ON p.brand_id = br.id
+                LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
+                $whereSql
+                GROUP BY p.id
+                ORDER BY category_name, p.name
+            ";
+            
+            if ($branchId) {
+                $params[] = $branchId;
+            }
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $this->sendJson(['data' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+        } catch (\Exception $e) {
+            $this->sendError('Error en reporte de inventario: ' . $e->getMessage(), 500, ['sql' => $sql ?? null]);
         }
-        
-        $whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
-        
-        $sql = "
-            SELECT 
-                p.id, p.name, p.price, p.unit, p.min_stock, p.manages_inventory,
-                ANY_VALUE(c.name) as category_name,
-                ANY_VALUE(br.name) as brand_name,
-                COALESCE(SUM(pbs.stock), p.stock) as current_stock
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            LEFT JOIN brands br ON p.brand_id = br.id
-            LEFT JOIN product_branch_stock pbs ON p.id = pbs.product_id" . ($branchId ? " AND pbs.branch_id = ?" : "") . "
-            $whereSql
-            GROUP BY p.id
-            ORDER BY category_name, p.name
-        ";
-        
-        if ($branchId) {
-            $params[] = $branchId;
-        }
-        
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
-        $this->sendJson(['data' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
     }
 
     // GET /inventory/report-print?filter=[all|manages|not_manages]&branch_id=X&remote=1&raw_html=1
