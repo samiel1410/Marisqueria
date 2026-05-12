@@ -81,7 +81,7 @@ export default function CloseCashForm({ register, expectedTotal, onClose, onClos
           <div className="flex items-center gap-4">
             <div className="p-3 bg-red-100 text-red-600 rounded-xl"><Lock size={24}/></div>
             <div>
-              <h2 className="text-xl font-bold text-slate-800">Cierre de Caja — {register.name}</h2>
+              <h2 className="text-xl font-bold text-slate-800">Cierre de Caja</h2>
               <p className="text-slate-500 text-sm font-medium mt-0.5">Ingresa el efectivo real que tienes en el cajón.</p>
             </div>
           </div>

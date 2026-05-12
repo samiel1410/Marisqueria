@@ -58,7 +58,7 @@ export default function RegisterDetail({
             <div className="flex items-center gap-2 mt-1">
               <span className={`w-2 h-2 rounded-full ${isViewing ? 'bg-primary-300' : 'bg-emerald-500 animate-pulse'}`}/>
               <p className={`text-sm font-bold ${isViewing ? 'text-primary-400' : 'text-emerald-600'}`}>
-                {isViewing ? 'Consulta de Sesión' : 'Sesión activa'} · {cashStatus?.session?.username}
+                {isViewing ? 'Detalles de Caja' : 'Caja abierta'} · {cashStatus?.session?.username}
               </p>
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function RegisterDetail({
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl"/>
             <div className="absolute bottom-0 left-0 w-24 h-24 bg-brand/20 rounded-full -ml-12 -mb-12 blur-xl"/>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50 mb-1">
-              {isViewing ? 'Total de Sesión' : 'Efectivo Disponible'}
+              {isViewing ? 'Total de Caja' : 'Efectivo Disponible'}
             </p>
             <h4 className="text-5xl font-black tabular-nums tracking-tight">${expectedTotal.toFixed(2)}</h4>
             <div className="mt-8 space-y-4">
@@ -190,7 +190,7 @@ export default function RegisterDetail({
             </div>
             <p className="text-xs font-bold text-primary-400 leading-relaxed">
               {isViewing 
-                ? 'Este es un reporte histórico de la sesión seleccionada. No se pueden realizar modificaciones.'
+                ? 'Este es un reporte histórico de la caja seleccionada. No se pueden realizar modificaciones.'
                 : 'No olvides registrar cada entrada o salida manual de efectivo para mantener un cuadre exacto al finalizar el turno.'
               }
             </p>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Unlock, X, AlertCircle, Calculator, Wallet, Coins } from 'lucide-react';
+import { Lock, X, AlertCircle, Calculator, Wallet, Coins } from 'lucide-react';
 import api from '../../../infrastructure/api';
 import { Button } from '../../components/Button';
 import { BILLS, COINS, DENOM_VALUE } from './constants';
 
-export default function OpenCashForm({ register, isFirstCreation, isEditing, onOpened, onSaved, onBack }) {
-  const initQty = () => { const o = {};[...BILLS, ...COINS].forEach(d => { o[d] = ''; }); return o; };
+export default function OpenCashForm({ onOpened, onBack }) {
+  const initQty = () => { const o = {}; [...BILLS, ...COINS].forEach(d => { o[d] = ''; }); return o; };
   const [qty, setQty] = useState(initQty);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -20,7 +20,7 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
     api.get('/cash/status').then(res => {
       if (res.data.status === 'open') {
         setActiveSession(res.data.session);
-        setError(`Tienes una sesión activa en "${res.data.session?.register_name || 'otra caja'}".`);
+        setError(`Ya existe una caja abierta en esta sucursal.`);
         setBlocked(true);
       }
     }).catch(() => { });
@@ -31,17 +31,6 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
     setError('');
     setSaving(true);
     try {
-      if (isEditing && register) {
-        await api.post('/cash-registers/update', {
-          id: register.id,
-          name: register.name,
-          status: register.status,
-          branch_id: register.branch_id
-        });
-        onSaved();
-        return;
-      }
-
       const breakdown = {};
       if (!withZero) {
         [...BILLS, ...COINS].forEach(d => { if (parseFloat(qty[d]) > 0) breakdown[d] = parseInt(qty[d]); });
@@ -50,16 +39,13 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
       const payload = {
         opening_balance: withZero ? 0 : total,
         opening_breakdown: withZero ? {} : breakdown,
+        // No enviamos register_id para que el backend cree una nueva Caja automáticamente
       };
-
-      if (register) {
-        payload.register_id = register.id;
-      }
 
       await api.post('/cash/open', payload);
       onOpened();
     } catch (err) {
-      const msg = err.response?.data?.error || 'Error al procesar la solicitud';
+      const msg = err.response?.data?.error || 'Error al abrir la caja';
       setError(msg);
     }
     finally { setSaving(false); }
@@ -76,17 +62,17 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
             <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
               <Lock size={40} className="animate-pulse" />
             </div>
-            <h2 className="text-2xl font-black mb-2">Acceso Restringido</h2>
-            <p className="text-white/80">Solo se permite una sesión de caja activa por usuario.</p>
+            <h2 className="text-2xl font-black mb-2">Caja en Uso</h2>
+            <p className="text-white/80">Ya hay una caja activa en esta sucursal.</p>
           </div>
           <div className="p-8 text-center">
             <p className="text-primary-600 font-medium mb-6 leading-relaxed">
-              Actualmente tienes una sesión abierta en <span className="font-bold text-primary-900 underline">"{activeSession?.register_name}"</span>.
-              Debes cerrarla antes de intentar abrir una nueva caja.
+              La caja <span className="font-bold text-primary-900 underline">"{activeSession?.register_name}"</span> está abierta por {activeSession?.username}.
+              Debes cerrarla antes de intentar abrir una nueva.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button onClick={onBack} variant="outline" className="px-8">
-                Volver a Cajas
+              <Button onClick={onOpened} variant="brand" className="px-8">
+                Ir a Caja Activa
               </Button>
             </div>
           </div>
@@ -107,11 +93,8 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
       )}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
         <div>
-          <button onClick={onBack} className="flex items-center gap-2 text-[10px] font-black text-primary-400 hover:text-brand mb-1.5 transition-all uppercase tracking-[0.2em] group">
-            <span className="group-hover:-translate-x-1 transition-transform">←</span> Volver
-          </button>
           <h2 className="text-3xl font-black text-primary-900 tracking-tight">
-            {isEditing ? 'Configurar Caja' : 'Apertura de Caja'}
+            Apertura de Caja
           </h2>
         </div>
         <div className="bg-white px-5 py-2.5 rounded-2xl border border-primary-100 flex items-center gap-4 shadow-sm">
@@ -119,7 +102,7 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
             <Calculator size={20} />
           </div>
           <div>
-            <p className="text-[10px] font-black text-primary-400 uppercase tracking-widest leading-none mb-1">Cajero Responsable</p>
+            <p className="text-[10px] font-black text-primary-400 uppercase tracking-widest leading-none mb-1">Responsable</p>
             <p className="text-sm font-black text-primary-900">{user?.username}</p>
           </div>
         </div>
@@ -127,9 +110,7 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-9 space-y-6">
-          {/* Denominaciones */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Billetes */}
             <div className="bg-white rounded-[1.5rem] shadow-sm border border-primary-100 overflow-hidden group/card hover:shadow-md transition-all duration-300">
               <div className="px-6 py-4 bg-gradient-to-r from-emerald-50/50 to-white border-b border-primary-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -160,7 +141,6 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
               </div>
             </div>
 
-            {/* Monedas */}
             <div className="bg-white rounded-[1.5rem] shadow-sm border border-primary-100 overflow-hidden group/card hover:shadow-md transition-all duration-300">
               <div className="px-6 py-4 bg-gradient-to-r from-amber-50/50 to-white border-b border-primary-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -193,7 +173,6 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
           </div>
         </div>
 
-        {/* Sidebar Resumen */}
         <div className="lg:col-span-3 space-y-4">
           <div className="bg-slate-950 rounded-[2rem] p-8 text-white shadow-2xl shadow-primary-900/40 relative overflow-hidden group/sidebar">
             <div className="absolute top-0 right-0 w-64 h-64 bg-brand/10 rounded-full -mr-20 -mt-20 blur-[80px] group-hover/sidebar:bg-brand/20 transition-all duration-700" />
@@ -207,8 +186,6 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
                 <span className="text-brand mr-1">$</span>{total.toFixed(2)}
               </h3>
 
-
-
               {error && (
                 <div className="bg-rose-500/20 border border-rose-500/40 text-rose-100 p-4 rounded-2xl text-[11px] font-bold flex items-start gap-3 mb-6 animate-shake shadow-lg">
                   <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-400" />
@@ -219,26 +196,22 @@ export default function OpenCashForm({ register, isFirstCreation, isEditing, onO
               <div className="space-y-4">
                 <Button
                   onClick={() => submit(false)}
-                  disabled={(!isEditing && !isFirstCreation && total <= 0) || saving}
+                  disabled={total <= 0 || saving}
                   loading={saving}
                   className="w-full h-16 bg-gradient-to-r from-brand to-sky-600 text-white hover:to-sky-500 hover:scale-[1.02] rounded-2xl font-black text-lg shadow-[0_20px_40px_-10px_rgba(14,165,233,0.3)] transition-all active:scale-95 border border-white/10"
                 >
-                  {isFirstCreation ? 'Crear y Abrir' : isEditing ? 'Guardar' : 'Abrir Caja'}
+                  Abrir Caja
                 </Button>
-                {!isEditing && (
-                  <button
-                    onClick={() => submit(true)}
-                    disabled={saving}
-                    className="w-full py-3 text-white/40 hover:text-white/90 text-[10px] font-black uppercase tracking-[0.2em] transition-all hover:bg-white/5 rounded-xl"
-                  >
-                    {isFirstCreation ? 'Crear con $0.00' : 'Abrir con $0.00'}
-                  </button>
-                )}
+                <button
+                  onClick={() => submit(true)}
+                  disabled={saving}
+                  className="w-full py-3 text-white/40 hover:text-white/90 text-[10px] font-black uppercase tracking-[0.2em] transition-all hover:bg-white/5 rounded-xl"
+                >
+                  Abrir con $0.00
+                </button>
               </div>
             </div>
           </div>
-
-
         </div>
       </div>
     </div>
