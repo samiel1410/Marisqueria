@@ -59,7 +59,9 @@ class ProductController extends BaseController {
             
             // Subquery approach to avoid GROUP BY issues and ANY_VALUE compatibility
             $sql = "
-                SELECT p.*, c.name as category_name, br.name as brand_name,
+                SELECT p.id, p.category_id, p.brand_id, p.name, p.price, p.stock, p.min_stock, p.unit, 
+                    p.manages_inventory, p.is_takeaway, p.takeaway_surcharge,
+                    c.name as category_name, br.name as brand_name,
                     (SELECT 1 FROM product_schedules ps WHERE ps.product_id = p.id AND ps.{$currentDay} = 1 LIMIT 1) as is_daily,
                     (SELECT COALESCE(SUM(pbs.stock), p.stock) FROM product_branch_stock pbs WHERE pbs.product_id = p.id " . ($branchId ? " AND pbs.branch_id = ?" : "") . ") as current_stock
                 FROM products p
