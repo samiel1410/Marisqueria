@@ -6,14 +6,12 @@ use PDO;
 class ProductController extends BaseController {
 
     public function index(): void {
-        error_log("ProductController::index started");
         $sql = "";
         $execParams = [];
         $currentDay = strtolower(date('l'));
         
         try {
             $db = Database::getConnection();
-            error_log("ProductController::index - DB connected");
             
             $dayParam = isset($_GET['day']) ? strtolower($_GET['day']) : $currentDay;
             $allowedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -102,10 +100,8 @@ class ProductController extends BaseController {
                 'limit' => $limit
             ]);
         } catch (\Exception $e) {
-            $this->sendError('Error al obtener productos: ' . $e->getMessage(), 500, [
-                'sql' => $sql,
-                'params' => $execParams,
-                'trace' => $e->getTraceAsString()
+            $this->sendError("Error al cargar productos", 500, [
+                'message' => $e->getMessage()
             ]);
         }
     }
