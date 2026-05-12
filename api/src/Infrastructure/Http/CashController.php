@@ -195,9 +195,9 @@ class CashController extends BaseController {
                 COALESCE(SUM(CASE WHEN payment_method = 'efectivo' THEN amount ELSE 0 END), 0) as cash_sales,
                 COALESCE(SUM(CASE WHEN payment_method = 'transferencia' THEN amount ELSE 0 END), 0) as transfer_sales
             FROM order_payments 
-            WHERE created_at >= ?
+            WHERE user_id = ? AND created_at >= ?
         ");
-        $stmtSales->execute([$session['opened_at']]);
+        $stmtSales->execute([$session['user_id'], $session['opened_at']]);
         $salesData = $stmtSales->fetch(PDO::FETCH_ASSOC);
         $totalCashSales = (float)$salesData['cash_sales'];
         $totalTransferSales = (float)$salesData['transfer_sales'];

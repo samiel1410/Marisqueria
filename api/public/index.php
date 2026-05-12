@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('America/Guayaquil');
 // CORS Headers
 $allowedOrigins = [
     'http://localhost:5173',

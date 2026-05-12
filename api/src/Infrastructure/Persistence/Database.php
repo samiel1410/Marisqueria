@@ -26,6 +26,8 @@ class Database {
 
             try {
                 self::$instance = new PDO($dsn, $user, $pass, $options);
+                // Sincronizar zona horaria con la del usuario (Ecuador UTC-5)
+                self::$instance->exec("SET time_zone = '-05:00'");
             } catch (PDOException $e) {
                 $debugInfo = "Host: $host, DB: $db, User: $user. DSN: $dsn";
                 throw new PDOException($debugInfo . " | Error: " . $e->getMessage(), (int)$e->getCode());
