@@ -163,6 +163,8 @@ $router->add('POST', '/orders', [\App\Infrastructure\Http\OrderController::class
 $router->add('POST', '/orders/status', [\App\Infrastructure\Http\OrderController::class, 'updateStatus']);
 $router->add('POST', '/orders/update', [\App\Infrastructure\Http\OrderController::class, 'update']);
 $router->add('POST', '/orders/cancel', [\App\Infrastructure\Http\OrderController::class, 'cancel']);
+$router->add('GET', '/transfers', [\App\Infrastructure\Http\OrderController::class, 'getTransfers']);
+
 
 // Dashboard
 $router->add('GET', '/dashboard/stats', [\App\Infrastructure\Http\DashboardController::class, 'getStats']);
@@ -174,7 +176,7 @@ $router->add('POST', '/notifications/subscribe', [\App\Infrastructure\Http\Notif
 $router->add('POST', '/qz/sign', [\App\Infrastructure\Http\PrintSignatureController::class, 'sign']);
 $router->add('GET', '/qz/certificate', [\App\Infrastructure\Http\PrintSignatureController::class, 'certificate']);
 $router->add('GET', '/qz/download', function() {
-    $filePath = __DIR__ . '/../../CERTIFICADO_IMPRESION.crt';
+    $filePath = __DIR__ . '/../../../CERTIFICADO_IMPRESION.crt';
     if (file_exists($filePath)) {
         header('Content-Type: application/x-x509-ca-cert');
         header('Content-Disposition: attachment; filename="CERTIFICADO_IMPRESION.crt"');

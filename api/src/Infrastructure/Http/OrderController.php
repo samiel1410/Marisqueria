@@ -344,6 +344,21 @@ class OrderController extends BaseController {
         $db = Database::getConnection();
         try {
             $db->beginTransaction();
+
+            // Handle receipt upload
+            $receiptPath = null;
+            if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
+                $uploadDir = __DIR__ . '/../../../public/uploads/receipts/';
+                if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+                
+                $extension = pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION);
+                $fileName = 'receipt_' . $data['order_id'] . '_' . time() . '.jpg';
+                $targetFile = $uploadDir . $fileName;
+                
+                if ($this->compressImage($_FILES['receipt']['tmp_name'], $targetFile, 60)) {
+                    $receiptPath = 'uploads/receipts/' . $fileName;
+                }
+            }
             
             $stmt = $db->prepare("SELECT * FROM orders WHERE id = ?");
             $stmt->execute([$data['order_id']]);
@@ -406,8 +421,8 @@ class OrderController extends BaseController {
                            ->execute([$data['order_id'], $cashAmount, $user->id]);
                     }
                     if ($transferAmount > 0) {
-                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, user_id) VALUES (?, ?, 'transferencia', ?, ?)")
-                           ->execute([$data['order_id'], $transferAmount, $bankId, $user->id]);
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_path, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
+                           ->execute([$data['order_id'], $transferAmount, $bankId, $receiptPath, $user->id]);
                     }
                 } else {
                     $amount = $amountPaidThisTime > 0 ? $amountPaidThisTime : (float)$orderDataFull['total'];
@@ -415,8 +430,8 @@ class OrderController extends BaseController {
                         $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
                            ->execute([$data['order_id'], $amount, $user->id]);
                     } else {
-                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, user_id) VALUES (?, ?, 'transferencia', ?, ?)")
-                           ->execute([$data['order_id'], $amount, $bankId, $user->id]);
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_path, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
+                           ->execute([$data['order_id'], $amount, $bankId, $receiptPath, $user->id]);
                     }
                 }
 
@@ -954,5 +969,77 @@ class OrderController extends BaseController {
             http_response_code(500);
             echo json_encode(['error' => 'Cancellation failed', 'details' => $e->getMessage()]);
         }
+    }
+    public function getTransfers(): void {
+        $user = AuthMiddleware::handle();
+        if ($user->role !== 'admin') {
+            http_response_code(403);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        $date = $_GET['date'] ?? date('Y-m-d');
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare("
+            SELECT p.*, o.daily_number, o.table_id, t.number as table_number, 
+                   u.username as cashier_name, b.bank_name
+            FROM order_payments p
+            JOIN orders o ON p.order_id = o.id
+            LEFT JOIN restaurant_tables t ON o.table_id = t.id
+            LEFT JOIN users u ON p.user_id = u.id
+            LEFT JOIN bank_accounts b ON p.bank_account_id = b.id
+            WHERE p.payment_method = 'transferencia' 
+            AND DATE(p.created_at) = ?
+            ORDER BY p.created_at DESC
+        ");
+        $stmt->execute([$date]);
+        $transfers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmtTotal = $db->prepare("
+            SELECT COALESCE(SUM(amount), 0) as total
+            FROM order_payments
+            WHERE payment_method = 'transferencia'
+            AND DATE(created_at) = ?
+        ");
+        $stmtTotal->execute([$date]);
+        $total = $stmtTotal->fetchColumn();
+
+        echo json_encode([
+            'date' => $date,
+            'total' => (float)$total,
+            'transfers' => $transfers
+        ]);
+    }
+
+    private function compressImage($source, $destination, $quality) {
+        $info = getimagesize($source);
+        if (!$info) return false;
+
+        if ($info['mime'] == 'image/jpeg') $image = imagecreatefromjpeg($source);
+        elseif ($info['mime'] == 'image/gif') $image = imagecreatefromgif($source);
+        elseif ($info['mime'] == 'image/png') $image = imagecreatefrompng($source);
+        else return false;
+
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $maxSize = 1200;
+        if ($width > $maxSize || $height > $maxSize) {
+            if ($width > $height) {
+                $newWidth = $maxSize;
+                $newHeight = ($height / $width) * $maxSize;
+            } else {
+                $newHeight = $maxSize;
+                $newWidth = ($width / $height) * $maxSize;
+            }
+            $tmp = imagecreatetruecolor($newWidth, $newHeight);
+            imagecopyresampled($tmp, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+            imagedestroy($image);
+            $image = $tmp;
+        }
+
+        imagejpeg($image, $destination, $quality);
+        imagedestroy($image);
+        return true;
     }
 }
