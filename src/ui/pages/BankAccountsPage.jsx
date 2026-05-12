@@ -29,6 +29,11 @@ const BankAccountsPage = () => {
     fetchBanks();
   }, []);
 
+  const getImageUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith('data:') || path.startsWith('http')) return path;
+    return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+  };
 
   const fetchBanks = async () => {
     try {
@@ -164,7 +169,7 @@ const BankAccountsPage = () => {
               <div className="border-t border-slate-50 bg-slate-50/50 p-4">
                 {bank.qr_path ? (
                   <div className="relative group/qr">
-                    <img src={`${BASE_URL}${bank.qr_path}`} alt="QR" className="w-full h-32 object-contain rounded-lg bg-white p-2 border border-slate-100" />
+                    <img src={getImageUrl(bank.qr_path)} alt="QR" className="w-full h-32 object-contain rounded-lg bg-white p-2 border border-slate-100" />
                     <label className="absolute inset-0 bg-black/40 opacity-0 group-hover/qr:opacity-100 transition-opacity flex items-center justify-center cursor-pointer rounded-lg">
                       <Camera className="text-white" /><input type="file" className="hidden" onChange={(e) => handleQrUpload(bank.id, e.target.files[0])} />
                     </label>

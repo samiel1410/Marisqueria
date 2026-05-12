@@ -279,8 +279,8 @@ export default function POSPage() {
 
   const getImageUrl = (path) => {
     if (!path) return null;
-    if (path.startsWith('http')) return path;
-    return `${BASE_URL}/${path}`;
+    if (path.startsWith('data:') || path.startsWith('http')) return path;
+    return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
   };
 
   if (loading) {

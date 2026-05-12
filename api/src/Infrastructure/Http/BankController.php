@@ -107,11 +107,9 @@ class BankController {
     }
 
     private function uploadQrFile(array $file, $id): ?string {
-        $uploadDir = __DIR__ . "/../../../public/uploads/qrs/";
-        if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
-
-        // Fallback to Base64 if not writable
-        if (!@is_writable($uploadDir)) {
+        // Fallback to Base64 if not writable or on Vercel
+        $isVercel = strpos(__DIR__, '/var/task') !== false;
+        if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0777, true)) || !@is_writable($uploadDir)) {
             $imageData = file_get_contents($file['tmp_name']);
             $mimeType = mime_content_type($file['tmp_name']);
             return 'data:' . $mimeType . ';base64,' . base64_encode($imageData);

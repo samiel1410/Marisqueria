@@ -141,6 +141,7 @@ class OrderController {
         $db = Database::getConnection();
         
         $userId = $_GET['user_id'] ?? null;
+        $customerId = $_GET['customer_id'] ?? null;
         
         $sql = "
             SELECT o.*, t.number as table_number, u.username as waiter_name, up.username as updated_by_name,
@@ -157,10 +158,20 @@ class OrderController {
             LEFT JOIN users up ON o.updated_by = up.id
         ";
         $params = [];
+        $where = [];
         
         if ($userId) {
-            $sql .= " WHERE o.user_id = ?";
+            $where[] = "o.user_id = ?";
             $params[] = $userId;
+        }
+        
+        if ($customerId) {
+            $where[] = "o.customer_id = ?";
+            $params[] = $customerId;
+        }
+
+        if (!empty($where)) {
+            $sql .= " WHERE " . implode(" AND ", $where);
         }
         
         $sql .= " ORDER BY o.created_at DESC";

@@ -147,6 +147,12 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
     await handleRemotePrint(order.id);
   };
 
+  const getImageUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith('data:') || path.startsWith('http')) return path;
+    return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -429,8 +435,8 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                           <p className="text-xs text-slate-500 font-medium">{bank.account_type || 'Ahorros'} • {bank.account_number}</p>
                         </div>
                         {bank.qr_path && (
-                          <div className="bg-white p-1 rounded-lg border border-slate-200">
-                            <QrCode size={20} className="text-slate-400" />
+                          <div className="bg-white p-1 rounded-lg border border-slate-200 w-10 h-10 shrink-0">
+                            <img src={getImageUrl(bank.qr_path)} alt="QR" className="w-full h-full object-contain" />
                           </div>
                         )}
                       </div>

@@ -4,8 +4,9 @@ use App\Infrastructure\Persistence\Database;
 
 try {
     $db = Database::getConnection();
-    $stmt = $db->query("DESCRIBE products");
-    print_r($stmt->fetchAll(PDO::FETCH_ASSOC));
+    $stmt = $db->query("DESCRIBE categories");
+    $columns = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    echo json_encode($columns, JSON_PRETTY_PRINT);
 } catch (Exception $e) {
-    echo $e->getMessage();
+    echo "Error: " . $e->getMessage();
 }

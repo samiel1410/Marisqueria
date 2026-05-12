@@ -8,10 +8,14 @@ import DataTable from '../components/DataTable';
 
 function CategoryModal({ open, onClose, editing, onSaved }) {
   const [name, setName] = useState('');
+  const [type, setType] = useState('alimento');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setName(editing?.name || '');
+    if (open) {
+      setName(editing?.name || '');
+      setType(editing?.type || 'alimento');
+    }
   }, [open, editing]);
 
   const handleSubmit = async (e) => {
@@ -20,9 +24,9 @@ function CategoryModal({ open, onClose, editing, onSaved }) {
     setSaving(true);
     try {
       if (editing) {
-        await api.post('/categories/update', { id: editing.id, name: name.trim() });
+        await api.post('/categories/update', { id: editing.id, name: name.trim(), type });
       } else {
-        await api.post('/categories', { name: name.trim() });
+        await api.post('/categories', { name: name.trim(), type });
       }
       onSaved();
       onClose();
@@ -40,6 +44,17 @@ function CategoryModal({ open, onClose, editing, onSaved }) {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <Input label="Nombre *" required value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Ceviches, Bebidas..." />
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-primary-700">Tipo *</label>
+            <select 
+              value={type} 
+              onChange={e => setType(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-primary-200 focus:border-brand focus:ring-4 focus:ring-brand/10 transition-all outline-none bg-white text-primary-900"
+            >
+              <option value="alimento">Alimento</option>
+              <option value="bebida">Bebida</option>
+            </select>
+          </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
             <Button type="submit" variant="brand" loading={saving}>
@@ -103,6 +118,11 @@ export default function CategoriesPage() {
             </div>
           )},
           { key: 'name', header: 'Nombre', render: r => <span className="font-semibold text-primary-900">{r.name}</span> },
+          { key: 'type', header: 'Tipo', render: r => (
+            <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${r.type === 'bebida' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+              {r.type || 'alimento'}
+            </span>
+          )},
           { key: 'created_at', header: 'Creado', render: r => (
             <span className="text-sm text-primary-400">{new Date(r.created_at).toLocaleDateString('es-ES')}</span>
           )},

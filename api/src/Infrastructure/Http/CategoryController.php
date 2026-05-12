@@ -24,8 +24,8 @@ class CategoryController {
         }
 
         $db = Database::getConnection();
-        $stmt = $db->prepare("INSERT INTO categories (name) VALUES (?)");
-        $stmt->execute([$data['name']]);
+        $stmt = $db->prepare("INSERT INTO categories (name, type) VALUES (?, ?)");
+        $stmt->execute([$data['name'], $data['type'] ?? 'alimento']);
         
         http_response_code(201);
         echo json_encode(['message' => 'Category created', 'id' => $db->lastInsertId()]);
@@ -48,13 +48,15 @@ class CategoryController {
         $data = json_decode(file_get_contents('php://input'), true);
         $id   = $data['id'] ?? null;
         $name = trim($data['name'] ?? '');
+        $type = $data['type'] ?? 'alimento';
+        
         if (!$id || !$name) {
             http_response_code(400);
             echo json_encode(['error' => 'ID and name required']);
             return;
         }
         $db = Database::getConnection();
-        $db->prepare("UPDATE categories SET name=? WHERE id=?")->execute([$name, $id]);
+        $db->prepare("UPDATE categories SET name=?, type=? WHERE id=?")->execute([$name, $type, $id]);
         echo json_encode(['message' => 'Category updated']);
     }
 }

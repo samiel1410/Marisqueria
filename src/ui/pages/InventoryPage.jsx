@@ -19,6 +19,13 @@ const emptyForm = {
   takeaway_surcharge: 0,
 };
 
+const getImageUrl = (path) => {
+  if (!path) return null;
+  if (path.startsWith('data:') || path.startsWith('http')) return path;
+  const baseUrl = import.meta.env.VITE_API_URL || '/api/public';
+  return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+};
+
 // ─── ActionMenu ──────────────────────────────────────────────────────────────
 const ActionMenu = ({ product, openEdit, setMovementProduct, setKardexProduct, handleDelete }) => {
   const [open, setOpen] = useState(false);
@@ -113,7 +120,7 @@ function ProductModal({ open, onClose, product, categories, brands, branches, on
         category_id: product.category_id || '',
         brand_id: product.brand_id || '',
         image: null,
-        imagePreview: product.image_path ? product.image_path : null,
+        imagePreview: product.image_path ? getImageUrl(product.image_path) : null,
         branch_stocks: product.branch_stocks || [],
         manages_inventory: product.manages_inventory !== undefined ? product.manages_inventory : 1,
         is_takeaway: product.is_takeaway !== undefined ? product.is_takeaway : 0,
@@ -198,9 +205,21 @@ function ProductModal({ open, onClose, product, categories, brands, branches, on
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Nombre *" required value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))}/>
             <Input label="Precio ($) *" type="number" step="0.01" min="0" required value={form.price} onChange={e => setForm(f=>({...f,price:e.target.value}))}/>
-            <Select label="Categoría *" required value={form.category_id}
-              onChange={e => setForm(f=>({...f,category_id:e.target.value}))}
-              options={categories.map(c=>({value:c.id,label:c.name}))}/>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Select label="Categoría *" required value={form.category_id}
+                  onChange={e => setForm(f=>({...f,category_id:e.target.value}))}
+                  options={categories.map(c=>({value:c.id,label:c.name}))}/>
+              </div>
+              <button 
+                type="button"
+                onClick={() => document.getElementById('open-categories-btn')?.click()}
+                className="mb-[2px] w-10 h-10 flex items-center justify-center bg-primary-100 text-brand rounded-xl hover:bg-brand hover:text-white transition-colors"
+                title="Crear categoría rápida"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
             <Select label="Marca" value={form.brand_id}
               onChange={e => setForm(f=>({...f,brand_id:e.target.value}))}
               options={[{value:'',label:'Sin marca'},...brands.map(b=>({value:b.id,label:b.name}))]}/>
@@ -400,6 +419,7 @@ function KardexModal({ open, onClose, product }) {
 // ─── CategoriesModal ─────────────────────────────────────────────────────────
 function CategoriesModal({ open, onClose, categories, onChanged }) {
   const [name, setName] = useState('');
+  const [type, setType] = useState('alimento');
   const [saving, setSaving] = useState(false);
 
   const handleAdd = async (e) => {
@@ -407,8 +427,9 @@ function CategoriesModal({ open, onClose, categories, onChanged }) {
     if (!name.trim() || saving) return;
     setSaving(true);
     try {
-      await api.post('/categories', { name: name.trim() });
+      await api.post('/categories', { name: name.trim(), type });
       setName('');
+      setType('alimento');
       onChanged();
     } catch (err) { console.error(err); }
     finally { setSaving(false); }
@@ -429,10 +450,20 @@ function CategoriesModal({ open, onClose, categories, onChanged }) {
           <button onClick={onClose}><X size={20}/></button>
         </div>
         <div className="p-6 space-y-4">
-          <form onSubmit={handleAdd} className="flex gap-2">
+          <form onSubmit={handleAdd} className="space-y-3">
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Nueva categoría..."
-              className="flex-1 px-4 py-2 rounded-xl border-2 border-primary-200 outline-none focus:border-brand text-sm"/>
-            <Button type="submit" variant="brand" size="sm" loading={saving}>Agregar</Button>
+              className="w-full px-4 py-2 rounded-xl border-2 border-primary-200 outline-none focus:border-brand text-sm"/>
+            <div className="flex gap-2">
+              <select 
+                value={type} 
+                onChange={e => setType(e.target.value)}
+                className="flex-1 px-3 py-1.5 rounded-lg border border-primary-200 outline-none focus:border-brand text-xs bg-white"
+              >
+                <option value="alimento">Alimento</option>
+                <option value="bebida">Bebida</option>
+              </select>
+              <Button type="submit" variant="brand" size="sm" loading={saving}>Agregar</Button>
+            </div>
           </form>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {categories.length === 0 && <p className="text-sm text-primary-400 text-center py-4">Sin categorías</p>}
@@ -594,7 +625,7 @@ const InventoryPage = () => {
         subtitle="Gestiona productos, marcas, stock y movimientos"
         action={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowCategoriesModal(true)}>Categorías</Button>
+            <Button id="open-categories-btn" variant="outline" size="sm" onClick={() => setShowCategoriesModal(true)}>Categorías</Button>
             <Button variant="outline" size="sm" onClick={() => setShowBrandsModal(true)}>Marcas</Button>
             <Button variant="brand" icon={Plus} onClick={() => { setEditingProduct(null); setShowProductModal(true); }}>
               Nuevo Producto
@@ -630,7 +661,7 @@ const InventoryPage = () => {
             columns={[
               { key: 'image', header: '', render: r => (
                 r.image_path
-                  ? <img src={r.image_path} alt={r.name} className="w-10 h-10 object-cover rounded-lg"/>
+                  ? <img src={getImageUrl(r.image_path)} alt={r.name} className="w-10 h-10 object-cover rounded-lg"/>
                   : <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center"><Package size={18} className="text-primary-400"/></div>
               )},
               { key: 'name', header: 'Producto', render: r => (
