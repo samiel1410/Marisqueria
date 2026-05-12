@@ -176,7 +176,7 @@ $router->add('POST', '/notifications/subscribe', [\App\Infrastructure\Http\Notif
 $router->add('POST', '/qz/sign', [\App\Infrastructure\Http\PrintSignatureController::class, 'sign']);
 $router->add('GET', '/qz/certificate', [\App\Infrastructure\Http\PrintSignatureController::class, 'certificate']);
 $router->add('GET', '/qz/download', function() {
-    $filePath = __DIR__ . '/../../../CERTIFICADO_IMPRESION.crt';
+    $filePath = __DIR__ . '/../../CERTIFICADO_IMPRESION.crt';
     if (file_exists($filePath)) {
         header('Content-Type: application/x-x509-ca-cert');
         header('Content-Disposition: attachment; filename="CERTIFICADO_IMPRESION.crt"');
