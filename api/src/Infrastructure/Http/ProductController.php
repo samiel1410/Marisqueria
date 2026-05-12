@@ -61,6 +61,7 @@ class ProductController extends BaseController {
             $sql = "
                 SELECT p.id, p.category_id, p.brand_id, p.name, p.price, p.stock, p.min_stock, p.unit, 
                     p.manages_inventory, p.is_takeaway, p.takeaway_surcharge,
+                    CASE WHEN LENGTH(p.image_path) > 300000 THEN NULL ELSE p.image_path END as image_path,
                     c.name as category_name, br.name as brand_name,
                     (SELECT 1 FROM product_schedules ps WHERE ps.product_id = p.id AND ps.{$currentDay} = 1 LIMIT 1) as is_daily,
                     (SELECT COALESCE(SUM(pbs.stock), p.stock) FROM product_branch_stock pbs WHERE pbs.product_id = p.id " . ($branchId ? " AND pbs.branch_id = ?" : "") . ") as current_stock
@@ -257,17 +258,51 @@ class ProductController extends BaseController {
     private function uploadImage(array $file): ?string {
         $uploadDir = __DIR__ . '/../../public/uploads/products/';
         $isVercel = strpos(__DIR__, '/var/task') !== false;
-        if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) || !@is_writable($uploadDir)) {
-            $type = pathinfo($file['name'], PATHINFO_EXTENSION);
+        
+        // Cargar imagen para comprimir
+        $src = null;
+        $type = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($type == 'jpg' || $type == 'jpeg') $src = imagecreatefromjpeg($file['tmp_name']);
+        elseif ($type == 'png') $src = imagecreatefrompng($file['tmp_name']);
+        elseif ($type == 'webp') $src = imagecreatefromwebp($file['tmp_name']);
+        
+        if ($src) {
+            // Redimensionar si es muy grande (max 800px ancho)
+            $width = imagesx($src);
+            $height = imagesy($src);
+            if ($width > 800) {
+                $newWidth = 800;
+                $newHeight = ($height / $width) * $newWidth;
+                $tmp = imagecreatetruecolor($newWidth, $newHeight);
+                imagealphablending($tmp, false);
+                imagesavealpha($tmp, true);
+                imagecopyresampled($tmp, $src, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                imagedestroy($src);
+                $src = $tmp;
+            }
+            
+            // Guardar en buffer como WebP comprimido (más eficiente)
+            ob_start();
+            imagewebp($src, null, 60);
+            $data = ob_get_clean();
+            imagedestroy($src);
+            
+            if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) || !@is_writable($uploadDir)) {
+                return 'data:image/webp;base64,' . base64_encode($data);
+            }
+            
+            $filename = uniqid() . '.webp';
+            if (file_put_contents($uploadDir . $filename, $data)) {
+                return '/uploads/products/' . $filename;
+            }
+        }
+
+        // Fallback si falla la compresión
+        if ($isVercel) {
             $data = file_get_contents($file['tmp_name']);
             return 'data:image/' . $type . ';base64,' . base64_encode($data);
         }
-
-        $filename = uniqid() . '-' . basename($file['name']);
-        $targetPath = $uploadDir . $filename;
-        if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-            return '/uploads/products/' . $filename;
-        }
+        
         return null;
     }
 }

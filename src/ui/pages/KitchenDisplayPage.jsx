@@ -91,7 +91,14 @@ const KitchenDisplayPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-4 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-[#030712] text-white p-4 font-sans overflow-x-hidden">
+      <style>{`
+        body { background-color: #030712 !important; }
+        .kitchen-card-pending { background-color: #111827; border-color: #f97316; }
+        .kitchen-card-preparing { background-color: #111827; border-color: #1e40af; }
+        .kitchen-card-header-pending { background-color: #431407; }
+        .kitchen-card-header-preparing { background-color: #172554; }
+      `}</style>
 
       {/* Header Bar */}
       <div className="flex items-center justify-between mb-6 px-2">
@@ -105,7 +112,7 @@ const KitchenDisplayPage = () => {
 
         <div className="flex items-center gap-4">
           {/* FCM Status */}
-          <div className="flex items-center bg-gray-900 px-4 py-2 rounded-2xl border border-gray-800">
+          <div className="flex items-center bg-[#111827] px-4 py-2 rounded-2xl border border-gray-800">
             <span className="relative flex h-3 w-3 mr-2">
               {fcmStatus === 'active' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
             <span className={`relative inline-flex rounded-full h-3 w-3 ${
@@ -139,7 +146,7 @@ const KitchenDisplayPage = () => {
           {/* Fullscreen */}
           <button
             onClick={toggleFullscreen}
-            className="p-3 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded-2xl transition-all border border-gray-800"
+            className="p-3 bg-[#111827] hover:bg-gray-800 text-gray-300 rounded-2xl transition-all border border-gray-800"
           >
             {isFullscreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
           </button>
@@ -161,14 +168,12 @@ const KitchenDisplayPage = () => {
               <div
                 key={order.id}
                 className={`flex flex-col rounded-3xl border-2 shadow-2xl transition-all duration-300 overflow-hidden ${
-                  isPending
-                    ? 'border-orange-500 bg-gray-900 shadow-orange-500/20'
-                    : 'border-blue-800 bg-gray-900 shadow-blue-500/10'
+                  isPending ? 'kitchen-card-pending' : 'kitchen-card-preparing'
                 }`}
               >
                 {/* Card Header */}
                 <div className={`px-6 py-5 flex justify-between items-center ${
-                  isPending ? 'bg-orange-500/15' : 'bg-blue-900/20'
+                  isPending ? 'kitchen-card-header-pending' : 'kitchen-card-header-preparing'
                 }`}>
                   <div className="flex flex-col">
                     {/* Order number — very large */}

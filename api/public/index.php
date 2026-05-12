@@ -173,6 +173,19 @@ $router->add('POST', '/notifications/subscribe', [\App\Infrastructure\Http\Notif
 // QZ Tray Security
 $router->add('POST', '/qz/sign', [\App\Infrastructure\Http\PrintSignatureController::class, 'sign']);
 $router->add('GET', '/qz/certificate', [\App\Infrastructure\Http\PrintSignatureController::class, 'certificate']);
+$router->add('GET', '/qz/download', function() {
+    $filePath = __DIR__ . '/../../CERTIFICADO_IMPRESION.crt';
+    if (file_exists($filePath)) {
+        header('Content-Type: application/x-x509-ca-cert');
+        header('Content-Disposition: attachment; filename="CERTIFICADO_IMPRESION.crt"');
+        header('Content-Length: ' . filesize($filePath));
+        readfile($filePath);
+        exit;
+    } else {
+        http_response_code(404);
+        echo "Archivo de certificado no encontrado.";
+    }
+});
 
 // Print Queue
 $router->add('GET', '/print-queue', [\App\Infrastructure\Http\PrintQueueController::class, 'getPending']);

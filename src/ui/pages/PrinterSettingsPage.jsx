@@ -207,8 +207,20 @@ const PrinterSettingsPage = () => {
                 
                 <div className="mt-8 p-4 bg-amber-50 rounded-2xl border border-amber-100">
                   <p className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-2">Importante</p>
-                  <p className="text-xs text-amber-700 leading-relaxed">
+                  <p className="text-xs text-amber-700 leading-relaxed mb-4">
                     Tanto para USB como para Red LAN, debes tener <b>QZ Tray</b> ejecutándose en tu computadora.
+                  </p>
+                  <a 
+                    href="/api/qz/download" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-sky-100 no-underline"
+                  >
+                    <CheckCircle2 size={16} />
+                    Descargar Certificado QZ
+                  </a>
+                  <p className="text-[10px] text-amber-600 mt-2 text-center">
+                    Instala este archivo en tu navegador si QZ Tray pide permisos.
                   </p>
                 </div>
               </Card>
