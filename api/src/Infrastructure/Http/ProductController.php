@@ -6,12 +6,14 @@ use PDO;
 class ProductController extends BaseController {
 
     public function index(): void {
+        error_log("ProductController::index started");
         $sql = "";
         $execParams = [];
         $currentDay = strtolower(date('l'));
         
         try {
             $db = Database::getConnection();
+            error_log("ProductController::index - DB connected");
             
             $dayParam = isset($_GET['day']) ? strtolower($_GET['day']) : $currentDay;
             $allowedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
