@@ -56,15 +56,8 @@ class BankController {
 
         // Handle QR Upload if present in the same request
         if (isset($_FILES['qr']) && $id) {
-            $file = $_FILES['qr'];
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-            $fileName = "qr_bank_" . $id . "_" . time() . "." . $ext;
-            $uploadDir = __DIR__ . "/../../../public/uploads/qrs/";
-            
-            if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-
-            if (move_uploaded_file($file['tmp_name'], $uploadDir . $fileName)) {
-                $path = "/uploads/qrs/" . $fileName;
+            $path = $this->uploadQrFile($_FILES['qr'], $id);
+            if ($path) {
                 $db->prepare("UPDATE bank_accounts SET qr_path = ? WHERE id = ?")->execute([$path, $id]);
             }
         }
@@ -107,6 +100,8 @@ class BankController {
     }
 
     private function uploadQrFile(array $file, $id): ?string {
+        $uploadDir = __DIR__ . "/../../../public/uploads/qrs/";
+        
         // Fallback to Base64 if not writable or on Vercel
         $isVercel = strpos(__DIR__, '/var/task') !== false;
         if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0777, true)) || !@is_writable($uploadDir)) {

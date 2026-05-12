@@ -37,12 +37,12 @@ class DashboardController extends BaseController {
         }
         
         // 2. Active Orders & Trend vs Previous Hour
-        $sqlNow = "SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status != 'cobrado'" . $branchFilter;
+        $sqlNow = "SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status NOT IN ('cobrado', 'cancelado')" . $branchFilter;
         $stmtNow = $db->prepare($sqlNow);
         $stmtNow->execute($params);
         $activeOrders = (int) $stmtNow->fetchColumn();
 
-        $sqlPrevHour = "SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status != 'cobrado' AND o.created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)" . $branchFilter;
+        $sqlPrevHour = "SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status NOT IN ('cobrado', 'cancelado') AND o.created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)" . $branchFilter;
         $stmtPrevHour = $db->prepare($sqlPrevHour);
         $stmtPrevHour->execute($params);
         $prevHourOrders = (int) $stmtPrevHour->fetchColumn();
@@ -78,8 +78,7 @@ class DashboardController extends BaseController {
         $stmt->execute($params);
         $pendingOrders = (int) $stmt->fetchColumn();
         
-        // 3.6. Occupied Tables
-        $stmt = $db->query("SELECT COUNT(*) FROM restaurant_tables WHERE status = 'ocupada'");
+        $stmt = $db->query("SELECT COUNT(DISTINCT table_id) FROM orders WHERE status NOT IN ('cobrado', 'cancelado') AND table_id IS NOT NULL");
         $occupiedTables = (int) $stmt->fetchColumn();
         
         // 4. Low Stock Products
