@@ -12,7 +12,7 @@ class ProductController extends BaseController {
         
         $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
         if ($page < 1) $page = 1;
-        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
         $search = $_GET['search'] ?? '';
         $branchId = $_GET['branch_id'] ?? null;
         

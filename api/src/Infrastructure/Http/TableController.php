@@ -13,7 +13,8 @@ class TableController {
         $db = Database::getConnection();
         try {
             $sql = "SELECT t.*, 
-                    (SELECT status FROM orders WHERE table_id = t.id AND status != 'cobrado' ORDER BY created_at DESC LIMIT 1) as order_status
+                    (SELECT status FROM orders WHERE table_id = t.id AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1) as order_status,
+                    (SELECT id FROM orders WHERE table_id = t.id AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1) as order_id
                     FROM restaurant_tables t
                     ORDER BY t.number ASC";
             $stmt = $db->query($sql);

@@ -179,7 +179,20 @@ class OrderController {
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         
-        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($orders as &$order) {
+            $stmtItems = $db->prepare("
+                SELECT oi.*, p.name as product_name
+                FROM order_items oi
+                JOIN products p ON oi.product_id = p.id
+                WHERE oi.order_id = ?
+            ");
+            $stmtItems->execute([$order['id']]);
+            $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+        }
+        
+        echo json_encode($orders);
     }
     
     public function getActiveOrders(): void {
@@ -198,12 +211,25 @@ class OrderController {
             LEFT JOIN restaurant_tables t ON o.table_id = t.id
             LEFT JOIN users u ON o.user_id = u.id
             LEFT JOIN users up ON o.updated_by = up.id
-            WHERE (o.status != 'cobrado' AND o.status != 'cancelado') 
-               OR (o.table_id IS NULL AND o.status NOT IN ('entregado', 'cancelado'))
+            WHERE o.status NOT IN ('cobrado', 'cancelado') 
+
             ORDER BY o.created_at DESC
         ");
         
-        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($orders as &$order) {
+            $stmtItems = $db->prepare("
+                SELECT oi.*, p.name as product_name
+                FROM order_items oi
+                JOIN products p ON oi.product_id = p.id
+                WHERE oi.order_id = ?
+            ");
+            $stmtItems->execute([$order['id']]);
+            $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+        }
+        
+        echo json_encode($orders);
     }
 
     public function getKitchenOrders(): void {
@@ -440,9 +466,14 @@ class OrderController {
             }
 
             // Liberar mesa
-            if (($newStatus === 'cobrado' || $newStatus === 'cancelado') && $orderDataFull['table_id']) {
-                $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$orderDataFull['table_id']]);
-                NotificationService::sendToTopic('new_orders', 'Mesa Liberada', "Mesa disponible", ['order_id' => (string)$data['order_id'], 'type' => 'table_available']);
+            if ($newStatus === 'cobrado' || $newStatus === 'cancelado') {
+                if ($orderDataFull['table_id']) {
+                    $db->prepare("UPDATE restaurant_tables SET status = 'disponible' WHERE id = ?")->execute([$orderDataFull['table_id']]);
+                }
+                NotificationService::sendToTopic('new_orders', 'Pedido Finalizado', "Actualizando datos...", [
+                    'order_id' => (string)$data['order_id'], 
+                    'type' => 'table_available' // Keeping type for compatibility with existing mobile listener
+                ]);
             }
 
             // Impresión automática al cobrar
