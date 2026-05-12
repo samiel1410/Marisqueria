@@ -9,6 +9,10 @@ class ProductController extends BaseController {
         $db = Database::getConnection();
         
         $currentDay = isset($_GET['day']) ? strtolower($_GET['day']) : strtolower(date('l'));
+        $allowedDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        if (!in_array($currentDay, $allowedDays)) {
+            $currentDay = strtolower(date('l'));
+        }
         
         $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
         if ($page < 1) $page = 1;
@@ -237,6 +241,8 @@ class ProductController extends BaseController {
     }
 
     private function uploadImage(array $file): ?string {
+        $uploadDir = __DIR__ . '/../../public/uploads/products/';
+        
         // Si estamos en Vercel o el directorio no es escribible, usamos Base64
         $isVercel = strpos(__DIR__, '/var/task') !== false;
         if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) || !@is_writable($uploadDir)) {
