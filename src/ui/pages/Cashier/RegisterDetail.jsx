@@ -40,11 +40,13 @@ export default function RegisterDetail({
   const totals = {
     income: movements.filter(m => m.type === 'ingreso').reduce((s, m) => s + parseFloat(m.amount), 0),
     expense: movements.filter(m => m.type === 'egreso').reduce((s, m) => s + parseFloat(m.amount), 0),
-    sales: parseFloat(cashStatus?.session?.total_sales || 0),
+    sales: parseFloat(cashStatus?.current_sales || cashStatus?.session?.total_sales || 0),
     opening: parseFloat(cashStatus?.session?.opening_balance || 0),
   };
   
-  const expectedTotal = totals.opening + totals.sales + totals.income - totals.expense;
+  const expectedTotal = cashStatus?.expected_balance !== undefined 
+    ? parseFloat(cashStatus.expected_balance) 
+    : (totals.opening + totals.sales + totals.income - totals.expense);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

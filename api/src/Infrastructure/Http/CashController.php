@@ -35,14 +35,17 @@ class CashController extends BaseController {
             return;
         }
 
+        // Calcular ventas desde la apertura (estrictamente después para evitar traslapes)
         $stmtSales = $db->prepare("
             SELECT 
-                COALESCE(SUM(CASE WHEN payment_method = 'efectivo' THEN amount ELSE 0 END), 0) as cash_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'transferencia' THEN amount ELSE 0 END), 0) as transfer_sales
-            FROM order_payments 
-            WHERE created_at >= ?
+                COALESCE(SUM(CASE WHEN op.payment_method = 'efectivo' THEN op.amount ELSE 0 END), 0) as cash_sales,
+                COALESCE(SUM(CASE WHEN op.payment_method = 'transferencia' THEN op.amount ELSE 0 END), 0) as transfer_sales
+            FROM order_payments op
+            JOIN orders o ON op.order_id = o.id
+            JOIN users u ON o.user_id = u.id
+            WHERE op.created_at > ? AND u.branch_id = ?
         ");
-        $stmtSales->execute([$session['opened_at']]);
+        $stmtSales->execute([$session['opened_at'], $user->branch_id]);
         $salesData = $stmtSales->fetch(PDO::FETCH_ASSOC);
         $currentCashSales = (float)$salesData['cash_sales'];
         $currentTransferSales = (float)$salesData['transfer_sales'];
@@ -142,8 +145,8 @@ class CashController extends BaseController {
             $count = (int)$stmtCount->fetchColumn();
             $nextName = "Caja " . ($count + 1);
             
-            $stmtNew = $db->prepare("INSERT INTO cash_registers (name, status) VALUES (?, 'active')");
-            $stmtNew->execute([$nextName]);
+            $stmtNew = $db->prepare("INSERT INTO cash_registers (name, branch_id, status) VALUES (?, ?, 'active')");
+            $stmtNew->execute([$nextName, $user->branch_id]);
             $registerId = $db->lastInsertId();
         }
 
@@ -162,13 +165,15 @@ class CashController extends BaseController {
             }
         }
 
-        $stmt = $db->prepare("INSERT INTO cash_sessions (user_id, register_id, opening_balance, opening_breakdown, status, notes) VALUES (?, ?, ?, ?, 'open', ?)");
+        $now = date('Y-m-d H:i:s');
+        $stmt = $db->prepare("INSERT INTO cash_sessions (user_id, register_id, opening_balance, opening_breakdown, status, notes, opened_at) VALUES (?, ?, ?, ?, 'open', ?, ?)");
         $stmt->execute([
             $user->id,
             $registerId,
             $data['opening_balance'],
             isset($data['opening_breakdown']) ? json_encode($data['opening_breakdown']) : null,
             $data['notes'] ?? null,
+            $now
         ]);
         $this->sendJson(['message' => 'Caja abierta', 'session_id' => (int)$db->lastInsertId()], 201);
     }
@@ -192,12 +197,14 @@ class CashController extends BaseController {
 
         $stmtSales = $db->prepare("
             SELECT 
-                COALESCE(SUM(CASE WHEN payment_method = 'efectivo' THEN amount ELSE 0 END), 0) as cash_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'transferencia' THEN amount ELSE 0 END), 0) as transfer_sales
-            FROM order_payments 
-            WHERE created_at >= ?
+                COALESCE(SUM(CASE WHEN op.payment_method = 'efectivo' THEN op.amount ELSE 0 END), 0) as cash_sales,
+                COALESCE(SUM(CASE WHEN op.payment_method = 'transferencia' THEN op.amount ELSE 0 END), 0) as transfer_sales
+            FROM order_payments op
+            JOIN orders o ON op.order_id = o.id
+            JOIN users u ON o.user_id = u.id
+            WHERE op.created_at > ? AND u.branch_id = ?
         ");
-        $stmtSales->execute([$session['opened_at']]);
+        $stmtSales->execute([$session['opened_at'], $user->branch_id]);
         $salesData = $stmtSales->fetch(PDO::FETCH_ASSOC);
         $totalCashSales = (float)$salesData['cash_sales'];
         $totalTransferSales = (float)$salesData['transfer_sales'];
