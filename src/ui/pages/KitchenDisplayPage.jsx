@@ -95,8 +95,8 @@ const KitchenDisplayPage = () => {
 
       {/* Header Bar */}
       <div className="flex items-center justify-between mb-6 px-2">
-        <div className="flex items-center gap-3">
-          <ChefHat className="w-10 h-10 text-orange-400" />
+        <div className="flex items-center">
+          <ChefHat className="w-10 h-10 text-orange-400 mr-3" />
           <div>
             <h1 className="text-3xl font-black text-white tracking-tight uppercase leading-none">COCINA</h1>
             <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">{orders.length} pedido{orders.length !== 1 ? 's' : ''} activo{orders.length !== 1 ? 's' : ''}</p>
@@ -105,8 +105,8 @@ const KitchenDisplayPage = () => {
 
         <div className="flex items-center gap-4">
           {/* FCM Status */}
-          <div className="flex items-center gap-2 bg-gray-900 px-4 py-2 rounded-2xl border border-gray-800">
-            <span className="relative flex h-3 w-3">
+          <div className="flex items-center bg-gray-900 px-4 py-2 rounded-2xl border border-gray-800">
+            <span className="relative flex h-3 w-3 mr-2">
               {fcmStatus === 'active' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
             <span className={`relative inline-flex rounded-full h-3 w-3 ${
                 fcmStatus === 'active' ? 'bg-emerald-400' : 
@@ -170,12 +170,12 @@ const KitchenDisplayPage = () => {
                 <div className={`px-6 py-5 flex justify-between items-center ${
                   isPending ? 'bg-orange-500/15' : 'bg-blue-900/20'
                 }`}>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col">
                     {/* Order number — very large */}
-                    <span className="text-6xl font-black leading-none text-white">
+                    <span className="text-6xl font-black leading-none text-white mb-1">
                       #{order.daily_number || order.id}
                     </span>
-                    <span className={`text-lg font-black uppercase tracking-wider px-3 py-1 rounded-xl w-fit mt-1 ${
+                    <span className={`text-lg font-black uppercase tracking-wider px-3 py-1 rounded-xl w-fit ${
                       order.table_number
                         ? 'bg-blue-600 text-white'
                         : 'bg-purple-600 text-white'
@@ -183,9 +183,9 @@ const KitchenDisplayPage = () => {
                       {order.table_number ? `MESA ${order.table_number}` : 'PARA LLEVAR'}
                     </span>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <Clock className="w-5 h-5" />
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-center text-gray-400 mb-1">
+                      <Clock className="w-5 h-5 mr-2" />
                       <span className="text-base font-bold">
                         {formatDistanceToNow(new Date(order.created_at), { locale: es, addSuffix: false }).replace('alrededor de ', '')}
                       </span>
@@ -208,8 +208,8 @@ const KitchenDisplayPage = () => {
                 {/* Items List */}
                 <div className="flex-1 p-5 space-y-4">
                   {order.items.map((item, idx) => (
-                    <div key={idx} className="flex gap-4 items-start border-b border-gray-800 pb-4 last:border-0 last:pb-0">
-                      <div className="text-4xl font-black text-orange-400 leading-none min-w-[3rem] text-center">
+                    <div key={idx} className="flex items-start border-b border-gray-800 pb-4 last:border-0 last:pb-0">
+                      <div className="text-4xl font-black text-orange-400 leading-none min-w-[3rem] text-center mr-4">
                         {item.quantity}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -217,8 +217,8 @@ const KitchenDisplayPage = () => {
                           {item.product_name}
                         </div>
                         {item.notes && (
-                          <div className="mt-2 text-base font-bold text-amber-300 bg-amber-900/40 px-3 py-2 rounded-xl border border-amber-700/50 flex items-start gap-2">
-                            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+                          <div className="mt-2 text-base font-bold text-amber-300 bg-amber-900/40 px-3 py-2 rounded-xl border border-amber-700/50 flex items-start">
+                            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400 mr-2" />
                             <span>{item.notes}</span>
                           </div>
                         )}
