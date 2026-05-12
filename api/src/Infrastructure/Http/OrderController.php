@@ -1013,33 +1013,46 @@ class OrderController extends BaseController {
     }
 
     private function compressImage($source, $destination, $quality) {
-        $info = getimagesize($source);
-        if (!$info) return false;
-
-        if ($info['mime'] == 'image/jpeg') $image = imagecreatefromjpeg($source);
-        elseif ($info['mime'] == 'image/gif') $image = imagecreatefromgif($source);
-        elseif ($info['mime'] == 'image/png') $image = imagecreatefrompng($source);
-        else return false;
-
-        $width = imagesx($image);
-        $height = imagesy($image);
-        $maxSize = 1200;
-        if ($width > $maxSize || $height > $maxSize) {
-            if ($width > $height) {
-                $newWidth = $maxSize;
-                $newHeight = ($height / $width) * $maxSize;
-            } else {
-                $newHeight = $maxSize;
-                $newWidth = ($width / $height) * $maxSize;
+        try {
+            if (!function_exists('imagecreatefromjpeg') || !function_exists('getimagesize')) {
+                return move_uploaded_file($source, $destination);
             }
-            $tmp = imagecreatetruecolor($newWidth, $newHeight);
-            imagecopyresampled($tmp, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-            imagedestroy($image);
-            $image = $tmp;
-        }
 
-        imagejpeg($image, $destination, $quality);
-        imagedestroy($image);
-        return true;
+            $info = getimagesize($source);
+            if (!$info) return move_uploaded_file($source, $destination);
+
+            $mime = $info['mime'];
+            switch ($mime) {
+                case 'image/jpeg': $image = @imagecreatefromjpeg($source); break;
+                case 'image/gif':  $image = @imagecreatefromgif($source); break;
+                case 'image/png':  $image = @imagecreatefrompng($source); break;
+                default: return move_uploaded_file($source, $destination);
+            }
+
+            if (!$image) return move_uploaded_file($source, $destination);
+
+            $width = imagesx($image);
+            $height = imagesy($image);
+            $maxSize = 1200;
+            if ($width > $maxSize || $height > $maxSize) {
+                if ($width > $height) {
+                    $newWidth = $maxSize;
+                    $newHeight = ($height / $width) * $maxSize;
+                } else {
+                    $newHeight = $maxSize;
+                    $newWidth = ($width / $height) * $maxSize;
+                }
+                $tmp = imagecreatetruecolor($newWidth, $newHeight);
+                imagecopyresampled($tmp, $image, 0, 0, 0, 0, (int)$newWidth, (int)$newHeight, $width, $height);
+                imagedestroy($image);
+                $image = $tmp;
+            }
+
+            $success = imagejpeg($image, $destination, $quality);
+            imagedestroy($image);
+            return $success;
+        } catch (Exception $e) {
+            return move_uploaded_file($source, $destination);
+        }
     }
 }
