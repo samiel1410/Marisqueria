@@ -1077,58 +1077,5 @@ class OrderController extends BaseController
             'transfers' => $transfers
         ]);
     }
-
-    private function compressImage($source, $destination, $quality)
-    {
-        try {
-            if (!function_exists('imagecreatefromjpeg') || !function_exists('getimagesize')) {
-                return move_uploaded_file($source, $destination);
-            }
-
-            $info = getimagesize($source);
-            if (!$info)
-                return move_uploaded_file($source, $destination);
-
-            $mime = $info['mime'];
-            switch ($mime) {
-                case 'image/jpeg':
-                    $image = @imagecreatefromjpeg($source);
-                    break;
-                case 'image/gif':
-                    $image = @imagecreatefromgif($source);
-                    break;
-                case 'image/png':
-                    $image = @imagecreatefrompng($source);
-                    break;
-                default:
-                    return move_uploaded_file($source, $destination);
-            }
-
-            if (!$image)
-                return move_uploaded_file($source, $destination);
-
-            $width = imagesx($image);
-            $height = imagesy($image);
-            $maxSize = 1200;
-            if ($width > $maxSize || $height > $maxSize) {
-                if ($width > $height) {
-                    $newWidth = $maxSize;
-                    $newHeight = ($height / $width) * $maxSize;
-                } else {
-                    $newHeight = $maxSize;
-                    $newWidth = ($width / $height) * $maxSize;
-                }
-                $tmp = imagecreatetruecolor($newWidth, $newHeight);
-                imagecopyresampled($tmp, $image, 0, 0, 0, 0, (int) $newWidth, (int) $newHeight, $width, $height);
-                imagedestroy($image);
-                $image = $tmp;
-            }
-
-            $success = imagejpeg($image, $destination, $quality);
-            imagedestroy($image);
-            return $success;
-        } catch (Exception $e) {
-            return move_uploaded_file($source, $destination);
-        }
-    }
 }
+
