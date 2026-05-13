@@ -34,10 +34,15 @@ class OrderController extends BaseController
 
             $db->beginTransaction();
 
-            // Check for existing active order
+            // Check for existing active order and lock the table if applicable
             $existingOrder = null;
             if ($data['table_id'] !== null) {
-                $stmtExist = $db->prepare("SELECT id, total, user_id, daily_number FROM orders WHERE table_id = ? AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1");
+                // Bloqueamos la fila de la mesa para que otro proceso no intente crear un pedido para la misma mesa a la vez
+                $stmtLock = $db->prepare("SELECT id FROM restaurant_tables WHERE id = ? FOR UPDATE");
+                $stmtLock->execute([$data['table_id']]);
+
+                // Ahora que tenemos el bloqueo, buscamos si alguien creó una orden mientras esperábamos
+                $stmtExist = $db->prepare("SELECT id, total, user_id, daily_number FROM orders WHERE table_id = ? AND status NOT IN ('cobrado', 'cancelado') ORDER BY created_at DESC LIMIT 1 FOR UPDATE");
                 $stmtExist->execute([$data['table_id']]);
                 $existingOrder = $stmtExist->fetch(PDO::FETCH_ASSOC);
             }
@@ -385,7 +390,8 @@ class OrderController extends BaseController
                 }
             }
 
-            $stmt = $db->prepare("SELECT * FROM orders WHERE id = ?");
+            // Bloqueamos la fila para evitar que dos personas cobren al mismo tiempo (Race Condition)
+            $stmt = $db->prepare("SELECT * FROM orders WHERE id = ? FOR UPDATE");
             $stmt->execute([$data['order_id']]);
             $orderDataFull = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -393,6 +399,12 @@ class OrderController extends BaseController
                 throw new Exception("Order #{$data['order_id']} not found");
 
             $currentStatus = $orderDataFull['status'];
+
+            // Si la orden ya está cobrada y se intenta cobrar de nuevo, detenemos el proceso
+            if ($currentStatus === 'cobrado' && $data['status'] === 'cobrado') {
+                throw new Exception("Esta orden ya ha sido cobrada por otra persona.");
+            }
+
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order #{$data['order_id']} moving from $currentStatus to {$data['status']}\n", FILE_APPEND);
 
             // If moving to 'en cocina', notify the kitchen
