@@ -433,11 +433,11 @@ class OrderController extends BaseController
             $newStatus = $data['status'];
             if ($newStatus === 'cobrado') {
                 $paymentMethod = $data['payment_method'] ?? 'efectivo';
-                $bankId = $data['bank_account_id'] ?? null;
+                $bankId = (!empty($data['bank_account_id']) && $data['bank_account_id'] !== 'null') ? $data['bank_account_id'] : null;
                 $cashAmount = (float) ($data['cash_amount'] ?? 0);
                 $transferAmount = (float) ($data['transfer_amount'] ?? 0);
 
-                $customerId = $data['customer_id'] ?? null;
+                $customerId = (!empty($data['customer_id']) && $data['customer_id'] !== 'null') ? $data['customer_id'] : null;
                 $amountPaidThisTime = (float) ($data['amount'] ?? 0);
 
                 file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Processing payment for #{$data['order_id']} ($paymentMethod)\n", FILE_APPEND);
