@@ -82,40 +82,12 @@ class NotificationService {
 
             self::log("FCM: Topic response code $httpCode");
 
-            // 4. Send to direct tokens (optional bypass)
-            $tokensFile = self::getStoragePath() . '/web_tokens.json';
-            if (file_exists($tokensFile)) {
-                $directTokens = json_decode(file_get_contents($tokensFile), true) ?: [];
-                $sentCount = 0;
-                foreach ($directTokens as $directToken) {
-                    if (empty($directToken)) continue;
-                    
-                    $directMessage = [
-                        'message' => [
-                            'token' => $directToken,
-                            'data' => $data
-                        ]
-                    ];
-                    
-                    $ch2 = curl_init();
-                    curl_setopt($ch2, CURLOPT_URL, $url);
-                    curl_setopt($ch2, CURLOPT_POST, true);
-                    curl_setopt($ch2, CURLOPT_HTTPHEADER, [
-                        'Authorization: Bearer ' . $accessToken,
-                        'Content-Type: application/json'
-                    ]);
-                    curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($directMessage));
-                    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch2, CURLOPT_TIMEOUT, 2);
-                    
-                    curl_exec($ch2);
-                    $dCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-                    curl_close($ch2);
-                    
-                    if ($dCode === 200) $sentCount++;
-                }
-                self::log("FCM: Sent to $sentCount direct tokens");
-            }
+            /* 
+               REMOVED: Direct token notification loop. 
+               This was causing double notifications because tokens were already subscribed to the topic.
+            */
+
+            return $httpCode === 200;
 
             return $httpCode === 200;
         } catch (\Exception $e) {

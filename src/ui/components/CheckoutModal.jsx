@@ -318,7 +318,12 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
 
               <div className="grid grid-cols-2 gap-4">
                 <button 
-                  onClick={() => setPaymentMethod('efectivo')}
+                  onClick={() => {
+                    setPaymentMethod('efectivo');
+                    const balance = Number(order.total) - Number(order.total_paid || 0);
+                    setCashPart(balance);
+                    setTransferPart(0);
+                  }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     paymentMethod === 'efectivo' 
                       ? 'border-sky-500 bg-sky-50/50 text-sky-600 shadow-xl shadow-sky-100' 
@@ -332,7 +337,12 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                 </button>
 
                 <button 
-                  onClick={() => setPaymentMethod('transferencia')}
+                  onClick={() => {
+                    setPaymentMethod('transferencia');
+                    const balance = Number(order.total) - Number(order.total_paid || 0);
+                    setTransferPart(balance);
+                    setCashPart(0);
+                  }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     paymentMethod === 'transferencia' 
                       ? 'border-sky-500 bg-sky-50/50 text-sky-600 shadow-xl shadow-sky-100' 
@@ -348,8 +358,9 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                 <button 
                   onClick={() => {
                     setPaymentMethod('mixto');
-                    setCashPart(order.total / 2);
-                    setTransferPart(order.total / 2);
+                    const balance = Number(order.total) - Number(order.total_paid || 0);
+                    setCashPart(balance / 2);
+                    setTransferPart(balance / 2);
                   }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
                     paymentMethod === 'mixto' 

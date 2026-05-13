@@ -88,9 +88,6 @@ function App() {
     // Channel for cross-tab communication
     const channel = new BroadcastChannel('fcm_updates');
 
-    // Variable outside the listener to track recent prints
-    const recentPrints = new Set();
-
     // Listen for foreground messages
     const unsubscribe = onMessage(messaging, (payload) => {
       const { type, order_id, origin_host } = payload.data || {};
@@ -117,32 +114,37 @@ function App() {
       // Broadcast to other tabs
       channel.postMessage(payload);
       
-      // Anti-rebote (Debounce) para evitar impresiones dobles del mismo tipo y ID en 10 segundos
-      const printKey = `${payload?.data?.type}_${payload?.data?.order_id || payload?.data?.session_id}`;
-      if (recentPrints.has(printKey)) {
-        console.log('Ignorando petición de impresión duplicada:', printKey);
-      } else {
-        recentPrints.add(printKey);
-        setTimeout(() => recentPrints.delete(printKey), 10000);
+      // Anti-rebote (Debounce) CROSS-TAB para evitar impresiones dobles en múltiples pestañas
+      const printKey = `last_print_${payload?.data?.type}_${payload?.data?.order_id || payload?.data?.session_id}`;
+      const lastPrint = localStorage.getItem(printKey);
+      const now = Date.now();
 
-        // Handle automatic printing if it's a print request
-        if (type === 'print_request' && order_id) {
-          console.log('Triggering remote print for order:', order_id);
-          handleRemotePrint(order_id);
-        } else if (type === 'print_kitchen_request' && order_id) {
-          console.log('Triggering remote kitchen print for order:', order_id);
-          import('./infrastructure/PrinterService').then(({ handleRemoteKitchenPrint }) => {
-            handleRemoteKitchenPrint(order_id);
-          });
-        } else if (type === 'print_cash_request' && payload?.data?.session_id) {
-          import('./infrastructure/PrinterService').then(({ handleRemoteCashPrint }) => {
-            handleRemoteCashPrint(payload.data.session_id);
-          });
-        } else if (type === 'print_inventory_request') {
-          import('./infrastructure/PrinterService').then(({ handleRemoteInventoryPrint }) => {
-            handleRemoteInventoryPrint(payload.data.filter, payload.data.branch_id);
-          });
-        }
+      // Si se imprimió hace menos de 8 segundos en cualquier pestaña, ignorar
+      if (lastPrint && (now - parseInt(lastPrint)) < 8000) {
+        console.log('%c[FCM] Ignorando impresión duplicada (ya procesada en otra pestaña)', 'color: #f59e0b; font-weight: bold;');
+        return;
+      }
+
+      // Marcar como procesado inmediatamente en todas las pestañas vía localStorage
+      localStorage.setItem(printKey, now.toString());
+
+      // Handle automatic printing if it's a print request
+      if (type === 'print_request' && order_id) {
+        console.log('Triggering remote print for order:', order_id);
+        handleRemotePrint(order_id);
+      } else if (type === 'print_kitchen_request' && order_id) {
+        console.log('Triggering remote kitchen print for order:', order_id);
+        import('./infrastructure/PrinterService').then(({ handleRemoteKitchenPrint }) => {
+          handleRemoteKitchenPrint(order_id);
+        });
+      } else if (type === 'print_cash_request' && payload?.data?.session_id) {
+        import('./infrastructure/PrinterService').then(({ handleRemoteCashPrint }) => {
+          handleRemoteCashPrint(payload.data.session_id);
+        });
+      } else if (type === 'print_inventory_request') {
+        import('./infrastructure/PrinterService').then(({ handleRemoteInventoryPrint }) => {
+          handleRemoteInventoryPrint(payload.data.filter, payload.data.branch_id);
+        });
       }
 
       // Show browser notification if there is a notification block
