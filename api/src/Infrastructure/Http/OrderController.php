@@ -356,11 +356,14 @@ class OrderController extends BaseController
             $receiptBlob = null;
             if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
                 $tempFile = tempnam(sys_get_temp_dir(), 'rcpt_');
+                $mimeType = mime_content_type($_FILES['receipt']['tmp_name']) ?: 'image/jpeg';
                 if ($this->compressImage($_FILES['receipt']['tmp_name'], $tempFile, 60)) {
-                    $receiptBlob = file_get_contents($tempFile);
+                    $receiptData = file_get_contents($tempFile);
+                    $receiptBlob = 'data:' . $mimeType . ';base64,' . base64_encode($receiptData);
                     @unlink($tempFile);
                 } else {
-                    $receiptBlob = file_get_contents($_FILES['receipt']['tmp_name']);
+                    $receiptData = file_get_contents($_FILES['receipt']['tmp_name']);
+                    $receiptBlob = 'data:' . $mimeType . ';base64,' . base64_encode($receiptData);
                 }
             }
 
@@ -427,7 +430,7 @@ class OrderController extends BaseController
                             ->execute([$data['order_id'], $cashAmount, $user->id]);
                     }
                     if ($transferAmount > 0) {
-                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_blob, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_image, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
                             ->execute([$data['order_id'], $transferAmount, $bankId, $receiptBlob, $user->id]);
                     }
                 } else {
@@ -436,7 +439,7 @@ class OrderController extends BaseController
                         $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, user_id) VALUES (?, ?, 'efectivo', ?)")
                             ->execute([$data['order_id'], $amount, $user->id]);
                     } else {
-                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_blob, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
+                        $db->prepare("INSERT INTO order_payments (order_id, amount, payment_method, bank_account_id, receipt_image, user_id) VALUES (?, ?, 'transferencia', ?, ?, ?)")
                             ->execute([$data['order_id'], $amount, $bankId, $receiptBlob, $user->id]);
                     }
                 }
