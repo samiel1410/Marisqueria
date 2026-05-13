@@ -101,21 +101,84 @@ class BankController {
 
     private function uploadQrFile(array $file, $id): ?string {
         $uploadDir = __DIR__ . "/../../../public/uploads/qrs/";
-        
-        // Fallback to Base64 if not writable or on Vercel
         $isVercel = strpos(__DIR__, '/var/task') !== false;
-        if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0777, true)) || !@is_writable($uploadDir)) {
-            $imageData = file_get_contents($file['tmp_name']);
-            $mimeType = mime_content_type($file['tmp_name']);
-            return 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+        
+        $type = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $src = null;
+
+        // Try to create image resource
+        try {
+            if (($type == 'jpg' || $type == 'jpeg') && function_exists('imagecreatefromjpeg')) {
+                $src = @imagecreatefromjpeg($file['tmp_name']);
+            } elseif ($type == 'png' && function_exists('imagecreatefrompng')) {
+                $src = @imagecreatefrompng($file['tmp_name']);
+            } elseif ($type == 'webp' && function_exists('imagecreatefromwebp')) {
+                $src = @imagecreatefromwebp($file['tmp_name']);
+            }
+        } catch (\Exception $e) {
+            $src = null;
         }
 
-        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $fileName = "qr_bank_" . $id . "_" . time() . "." . $ext;
-        
-        if (move_uploaded_file($file['tmp_name'], $uploadDir . $fileName)) {
-            return "/uploads/qrs/" . $fileName;
+        if ($src) {
+            // Resize if too large (QR codes don't need to be huge, 500px is plenty)
+            $width = imagesx($src);
+            $height = imagesy($src);
+            if ($width > 500) {
+                $newWidth = 500;
+                $newHeight = ($height / $width) * $newWidth;
+                $tmp = imagecreatetruecolor($newWidth, $newHeight);
+                imagealphablending($tmp, false);
+                imagesavealpha($tmp, true);
+                imagecopyresampled($tmp, $src, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                imagedestroy($src);
+                $src = $tmp;
+            }
+
+            // Compress
+            ob_start();
+            $compressed = false;
+            $mimeType = 'image/jpeg';
+            if (function_exists('imagewebp')) {
+                $compressed = @imagewebp($src, null, 60);
+                $mimeType = 'image/webp';
+            } elseif (function_exists('imagejpeg')) {
+                $compressed = @imagejpeg($src, null, 70);
+                $mimeType = 'image/jpeg';
+            }
+            $data = ob_get_clean();
+            imagedestroy($src);
+
+            if ($compressed && !empty($data)) {
+                if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0777, true)) || !@is_writable($uploadDir)) {
+                    return 'data:' . $mimeType . ';base64,' . base64_encode($data);
+                }
+
+                $extension = ($mimeType == 'image/webp') ? '.webp' : '.jpg';
+                $fileName = "qr_bank_" . $id . "_" . time() . $extension;
+                if (file_put_contents($uploadDir . $fileName, $data)) {
+                    return "/uploads/qrs/" . $fileName;
+                }
+            }
         }
+        
+        // Fallback to original Base64 if compression failed or skipped
+        if ($isVercel) {
+            $imageData = @file_get_contents($file['tmp_name']);
+            if ($imageData) {
+                $mimeType = mime_content_type($file['tmp_name']) ?: 'image/' . $type;
+                return 'data:' . $mimeType . ';base64,' . base64_encode($imageData);
+            }
+        }
+
+        // Final fallback: try move_uploaded_file if not on Vercel
+        if (!$isVercel && is_writable($uploadDir)) {
+            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+            $fileName = "qr_bank_" . $id . "_" . time() . "." . $ext;
+            if (move_uploaded_file($file['tmp_name'], $uploadDir . $fileName)) {
+                return "/uploads/qrs/" . $fileName;
+            }
+        }
+
         return null;
     }
 }

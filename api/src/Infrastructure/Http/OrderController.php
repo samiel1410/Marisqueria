@@ -769,6 +769,47 @@ class OrderController extends BaseController
         }
     }
 
+    /**
+     * Compress an image file before storing it as a receipt blob.
+     * Supports JPEG, PNG, and WebP. Returns true on success, false otherwise.
+     */
+    private function compressImage(string $sourcePath, string $destPath, int $quality = 60): bool
+    {
+        // Verify source exists
+        if (!file_exists($sourcePath)) {
+            return false;
+        }
+        $info = getimagesize($sourcePath);
+        if ($info === false) {
+            return false;
+        }
+        $mime = $info['mime'] ?? '';
+        switch ($mime) {
+            case 'image/jpeg':
+                $image = imagecreatefromjpeg($sourcePath);
+                break;
+            case 'image/png':
+                $image = imagecreatefrompng($sourcePath);
+                break;
+            case 'image/webp':
+                if (function_exists('imagecreatefromwebp')) {
+                    $image = imagecreatefromwebp($sourcePath);
+                } else {
+                    $image = false;
+                }
+                break;
+            default:
+                return false;
+        }
+        if ($image === false) {
+            return false;
+        }
+        // Save as JPEG with given quality
+        $result = imagejpeg($image, $destPath, $quality);
+        imagedestroy($image);
+        return $result;
+    }
+
     public function requestRemotePrint(): void
     {
         AuthMiddleware::handle();

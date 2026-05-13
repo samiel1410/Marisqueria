@@ -259,15 +259,24 @@ class ProductController extends BaseController {
         $uploadDir = __DIR__ . '/../../public/uploads/products/';
         $isVercel = strpos(__DIR__, '/var/task') !== false;
         
-        // Cargar imagen para comprimir
-        $src = null;
         $type = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if ($type == 'jpg' || $type == 'jpeg') $src = imagecreatefromjpeg($file['tmp_name']);
-        elseif ($type == 'png') $src = imagecreatefrompng($file['tmp_name']);
-        elseif ($type == 'webp') $src = imagecreatefromwebp($file['tmp_name']);
+        $src = null;
+
+        // Try to create image resource based on type
+        try {
+            if (($type == 'jpg' || $type == 'jpeg') && function_exists('imagecreatefromjpeg')) {
+                $src = @imagecreatefromjpeg($file['tmp_name']);
+            } elseif ($type == 'png' && function_exists('imagecreatefrompng')) {
+                $src = @imagecreatefrompng($file['tmp_name']);
+            } elseif ($type == 'webp' && function_exists('imagecreatefromwebp')) {
+                $src = @imagecreatefromwebp($file['tmp_name']);
+            }
+        } catch (\Exception $e) {
+            $src = null;
+        }
         
         if ($src) {
-            // Redimensionar si es muy grande (max 800px ancho)
+            // Resize if too large (max 800px width)
             $width = imagesx($src);
             $height = imagesy($src);
             if ($width > 800) {
@@ -281,26 +290,42 @@ class ProductController extends BaseController {
                 $src = $tmp;
             }
             
-            // Guardar en buffer como WebP comprimido (más eficiente)
+            // Try to compress
             ob_start();
-            imagewebp($src, null, 60);
+            $compressed = false;
+            $mimeType = 'image/jpeg';
+            
+            if (function_exists('imagewebp')) {
+                $compressed = @imagewebp($src, null, 60);
+                $mimeType = 'image/webp';
+            } elseif (function_exists('imagejpeg')) {
+                $compressed = @imagejpeg($src, null, 70);
+                $mimeType = 'image/jpeg';
+            }
+            
             $data = ob_get_clean();
             imagedestroy($src);
             
-            if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) || !@is_writable($uploadDir)) {
-                return 'data:image/webp;base64,' . base64_encode($data);
-            }
-            
-            $filename = uniqid() . '.webp';
-            if (file_put_contents($uploadDir . $filename, $data)) {
-                return '/uploads/products/' . $filename;
+            if ($compressed && !empty($data)) {
+                if ($isVercel || (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) || !@is_writable($uploadDir)) {
+                    return 'data:' . $mimeType . ';base64,' . base64_encode($data);
+                }
+                
+                $extension = ($mimeType == 'image/webp') ? '.webp' : '.jpg';
+                $filename = uniqid() . $extension;
+                if (file_put_contents($uploadDir . $filename, $data)) {
+                    return '/uploads/products/' . $filename;
+                }
             }
         }
 
-        // Fallback si falla la compresión
+        // Fallback for Vercel or if compression failed
         if ($isVercel) {
-            $data = file_get_contents($file['tmp_name']);
-            return 'data:image/' . $type . ';base64,' . base64_encode($data);
+            $data = @file_get_contents($file['tmp_name']);
+            if ($data) {
+                $mime = mime_content_type($file['tmp_name']) ?: 'image/' . $type;
+                return 'data:' . $mime . ';base64,' . base64_encode($data);
+            }
         }
         
         return null;
