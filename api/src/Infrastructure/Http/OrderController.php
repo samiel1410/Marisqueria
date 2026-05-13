@@ -6,6 +6,7 @@ use App\Infrastructure\Persistence\Database;
 use App\Infrastructure\Services\NotificationService;
 use PDO;
 use Exception;
+use Throwable;
 
 class OrderController extends BaseController
 {
@@ -355,15 +356,32 @@ class OrderController extends BaseController
             // Handle receipt upload
             $receiptBlob = null;
             if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] === UPLOAD_ERR_OK) {
-                $tempFile = tempnam(sys_get_temp_dir(), 'rcpt_');
-                $mimeType = mime_content_type($_FILES['receipt']['tmp_name']) ?: 'image/jpeg';
-                if ($this->compressImage($_FILES['receipt']['tmp_name'], $tempFile, 60)) {
-                    $receiptData = file_get_contents($tempFile);
-                    $receiptBlob = 'data:' . $mimeType . ';base64,' . base64_encode($receiptData);
-                    @unlink($tempFile);
+                // If image is very small (< 100KB), don't even try to compress to save time
+                if ($_FILES['receipt']['size'] < 102400) {
+                    $receiptData = @file_get_contents($_FILES['receipt']['tmp_name']);
+                    if ($receiptData) {
+                        $mimeType = function_exists('mime_content_type') ? @mime_content_type($_FILES['receipt']['tmp_name']) : 'image/jpeg';
+                        $receiptBlob = 'data:' . ($mimeType ?: 'image/jpeg') . ';base64,' . base64_encode($receiptData);
+                    }
                 } else {
-                    $receiptData = file_get_contents($_FILES['receipt']['tmp_name']);
-                    $receiptBlob = 'data:' . $mimeType . ';base64,' . base64_encode($receiptData);
+                    $tempFile = tempnam(sys_get_temp_dir(), 'rcpt_');
+                    $mimeType = 'image/jpeg';
+                    if (function_exists('mime_content_type')) {
+                        $mimeType = @mime_content_type($_FILES['receipt']['tmp_name']) ?: 'image/jpeg';
+                    }
+                    
+                    if ($this->compressImage($_FILES['receipt']['tmp_name'], $tempFile, 60)) {
+                        $receiptData = @file_get_contents($tempFile);
+                        if ($receiptData) {
+                            $receiptBlob = 'data:' . $mimeType . ';base64,' . base64_encode($receiptData);
+                        }
+                        @unlink($tempFile);
+                    } else {
+                        $receiptData = @file_get_contents($_FILES['receipt']['tmp_name']);
+                        if ($receiptData) {
+                            $receiptBlob = 'data:' . $mimeType . ';base64,' . base64_encode($receiptData);
+                        }
+                    }
                 }
             }
 
@@ -493,12 +511,13 @@ class OrderController extends BaseController
             file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() success for #{$data['order_id']}\n", FILE_APPEND);
             echo json_encode(['message' => 'Order status updated successfully']);
 
-        } catch (Exception $e) {
-            if ($db->inTransaction())
+        } catch (Throwable $e) {
+            if (isset($db) && $db->inTransaction())
                 $db->rollBack();
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+            if (isset($logFile))
+                @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() ERROR: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . "\n", FILE_APPEND);
             http_response_code(500);
-            echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
+            echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
         }
     }
 
