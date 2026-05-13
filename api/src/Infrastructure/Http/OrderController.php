@@ -564,7 +564,7 @@ class OrderController extends BaseController
 
         // Get payments
         $stmtPayments = $db->prepare("
-            SELECT op.amount, op.payment_method, b.bank_name 
+            SELECT op.id, op.amount, op.payment_method, op.receipt_image, op.created_at, b.bank_name, b.account_number 
             FROM order_payments op
             LEFT JOIN bank_accounts b ON op.bank_account_id = b.id
             WHERE op.order_id = ?

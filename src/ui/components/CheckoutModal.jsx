@@ -13,7 +13,9 @@ import {
   QrCode,
   Plus,
   MessageCircle,
-  Download
+  Download,
+  Camera,
+  Image as ImageIcon
 } from 'lucide-react';
 import { handleRemotePrint } from '../../infrastructure/PrinterService';
 
@@ -36,6 +38,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
   const [transferPart, setTransferPart] = useState(0);
   const [selectedBankId, setSelectedBankId] = useState(null);
   const [tenderedAmount, setTenderedAmount] = useState('');
+  const [receiptFile, setReceiptFile] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -49,6 +52,7 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
       setTransferPart(0);
       setSelectedBankId(null);
       setTenderedAmount('');
+      setReceiptFile(null);
       fetchBanks();
     }
   }, [isOpen, order]);
@@ -122,22 +126,29 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
 
     setLoading(true);
     try {
-      const data = {
-        order_id: order.id,
-        status: 'cobrado',
-        payment_method: paymentMethod,
-        customer_id: customer?.id || null,
-        cash_amount: paymentMethod === 'mixto' ? cashPart : (paymentMethod === 'efectivo' ? cashPart : 0),
-        transfer_amount: paymentMethod === 'mixto' ? transferPart : (paymentMethod === 'transferencia' ? transferPart : 0),
-        bank_account_id: (paymentMethod === 'transferencia' || paymentMethod === 'mixto') ? selectedBankId : null,
-        amount: amountThisTime
-      };
-      const response = await api.post('/orders/status', data);
+      const formData = new FormData();
+      formData.append('order_id', order.id);
+      formData.append('status', 'cobrado');
+      formData.append('payment_method', paymentMethod);
+      formData.append('customer_id', customer?.id || '');
+      formData.append('amount', amountThisTime);
+      formData.append('cash_amount', paymentMethod === 'mixto' ? cashPart : (paymentMethod === 'efectivo' ? cashPart : 0));
+      formData.append('transfer_amount', paymentMethod === 'mixto' ? transferPart : (paymentMethod === 'transferencia' ? transferPart : 0));
+      formData.append('bank_account_id', (paymentMethod === 'transferencia' || paymentMethod === 'mixto') ? (selectedBankId || '') : '');
+      
+      if (receiptFile) {
+        formData.append('receipt', receiptFile);
+      }
+
+      const response = await api.post('/orders/status', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
       setCheckoutResult(response.data);
       setStep(3);
       if (onCheckoutSuccess) onCheckoutSuccess();
     } catch (error) {
-      alert("Error al procesar el cobro");
+      alert("Error al procesar el cobro: " + (error.response?.data?.details || error.message));
     } finally {
       setLoading(false);
     }
@@ -441,6 +452,41 @@ const CheckoutModal = ({ isOpen, onClose, order, onCheckoutSuccess }) => {
                         )}
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Subida de Comprobante */}
+              {(paymentMethod === 'transferencia' || paymentMethod === 'mixto') && (
+                <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-300">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Comprobante de Pago</p>
+                  <div className="flex items-center gap-4">
+                    {!receiptFile ? (
+                      <label className="flex-1 flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 hover:border-sky-500 transition-all cursor-pointer group">
+                        <ImageIcon className="text-slate-300 group-hover:text-sky-500 transition-colors mb-2" size={32} />
+                        <span className="text-[10px] font-black uppercase text-slate-400 group-hover:text-sky-500 transition-colors">Adjuntar Imagen</span>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={(e) => setReceiptFile(e.target.files[0])}
+                        />
+                      </label>
+                    ) : (
+                      <div className="flex-1 relative rounded-2xl overflow-hidden border-2 border-sky-500 bg-slate-50 h-32">
+                        <img 
+                          src={URL.createObjectURL(receiptFile)} 
+                          alt="Comprobante" 
+                          className="w-full h-full object-contain"
+                        />
+                        <button 
+                          onClick={() => setReceiptFile(null)}
+                          className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

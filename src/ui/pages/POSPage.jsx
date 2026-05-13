@@ -49,6 +49,7 @@ export default function POSPage() {
   const [lastOrderId, setLastOrderId] = useState(null);
   const [lastOrderNumber, setLastOrderNumber] = useState(null);
   const [searchingCustomer, setSearchingCustomer] = useState(false);
+  const [receiptFile, setReceiptFile] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -235,18 +236,24 @@ export default function POSPage() {
         return;
       }
 
-      const checkoutPayload = {
-        order_id: orderId,
-        status: 'cobrado',
-        payment_method: paymentMethod,
-        customer_id: customer.id,
-        bank_account_id: selectedBankId,
-        amount: total,
-        cash_amount: paymentMethod === 'efectivo' ? total : (paymentMethod === 'mixto' ? parseFloat(mixedCash || 0) : 0),
-        transfer_amount: paymentMethod === 'transferencia' ? total : (paymentMethod === 'mixto' ? parseFloat(mixedTransfer || 0) : 0)
-      };
+      const formData = new FormData();
+      formData.append('order_id', orderId);
+      formData.append('status', 'cobrado');
+      formData.append('payment_method', paymentMethod);
+      formData.append('customer_id', customer.id || '');
+      formData.append('bank_account_id', selectedBankId || '');
+      formData.append('amount', total);
+      formData.append('cash_amount', paymentMethod === 'efectivo' ? total : (paymentMethod === 'mixto' ? parseFloat(mixedCash || 0) : 0));
+      formData.append('transfer_amount', paymentMethod === 'transferencia' ? total : (paymentMethod === 'mixto' ? parseFloat(mixedTransfer || 0) : 0));
+      
+      if (receiptFile) {
+        formData.append('receipt', receiptFile);
+      }
 
-      await api.post('/orders/status', checkoutPayload);
+      await api.post('/orders/status', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
       setCheckoutStep(2);
       fetchData();
       showToast("Cobro realizado con éxito", { type: 'success' });
@@ -275,6 +282,7 @@ export default function POSPage() {
     setPaymentMethod('efectivo');
     setSelectedBankId(null);
     setLastOrderId(null);
+    setReceiptFile(null);
   };
 
   const getImageUrl = (path) => {
@@ -416,9 +424,10 @@ export default function POSPage() {
         onSubmit={() => handleSubmit(false)}
         onReset={resetPOS}
         saving={saving}
-        lastOrderId={lastOrderId}
         lastOrderNumber={lastOrderNumber}
         getImageUrl={getImageUrl}
+        receiptFile={receiptFile}
+        setReceiptFile={setReceiptFile}
       />
     </div>
   );

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Plus, Search, Loader2, Package, Trash2, Save, CheckCircle2, Printer, RefreshCw, Layers } from 'lucide-react';
+import React from 'react';
+import { Plus, Search, Loader2, Package, Trash2, Save, CheckCircle2, Printer, RefreshCw, Layers, Camera, Image as ImageIcon, X } from 'lucide-react';
 
 const PaymentModal = ({
   show,
@@ -27,7 +27,9 @@ const PaymentModal = ({
   lastOrderId,
   lastOrderNumber,
   getImageUrl,
-  setStep
+  setStep,
+  receiptFile,
+  setReceiptFile
 }) => {
   
 
@@ -322,6 +324,41 @@ const PaymentModal = ({
                         )}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Subida de Comprobante */}
+              {(paymentMethod === 'transferencia' || paymentMethod === 'mixto') && (
+                <div className="space-y-3 animate-in zoom-in-95">
+                  <h4 className="text-xs font-black text-primary-900 uppercase tracking-widest ml-1">Comprobante de Pago</h4>
+                  <div className="flex items-center gap-4">
+                    {!receiptFile ? (
+                      <label className="flex-1 flex flex-col items-center justify-center p-6 border-2 border-dashed border-primary-200 rounded-2xl bg-primary-50/50 hover:bg-primary-50 hover:border-brand transition-all cursor-pointer group">
+                        <ImageIcon className="text-primary-300 group-hover:text-brand transition-colors mb-2" size={32} />
+                        <span className="text-[10px] font-black uppercase text-primary-400 group-hover:text-brand transition-colors">Adjuntar Imagen</span>
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={(e) => setReceiptFile(e.target.files[0])}
+                        />
+                      </label>
+                    ) : (
+                      <div className="flex-1 relative rounded-2xl overflow-hidden border-2 border-brand bg-primary-50 h-32">
+                        <img 
+                          src={URL.createObjectURL(receiptFile)} 
+                          alt="Comprobante" 
+                          className="w-full h-full object-contain"
+                        />
+                        <button 
+                          onClick={() => setReceiptFile(null)}
+                          className="absolute top-2 right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

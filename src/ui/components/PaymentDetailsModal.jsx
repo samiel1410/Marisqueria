@@ -98,6 +98,19 @@ const PaymentDetailsModal = ({ isOpen, onClose, orderId, onAnnulSuccess }) => {
                         {p.bank_name && (
                           <p className="text-[10px] text-sky-600 font-bold">{p.bank_name} • {p.account_number}</p>
                         )}
+                        {p.receipt_image && (
+                          <div className="mt-3 rounded-2xl overflow-hidden border-2 border-slate-100 bg-white p-1.5 shadow-sm">
+                            <img 
+                              src={p.receipt_image} 
+                              alt="Comprobante" 
+                              className="max-h-48 w-auto rounded-xl cursor-zoom-in hover:opacity-95 transition-all"
+                              onClick={() => {
+                                const win = window.open();
+                                win.document.write(`<img src="${p.receipt_image}" style="max-width:100%">`);
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                     <p className="text-lg font-black text-slate-900">
