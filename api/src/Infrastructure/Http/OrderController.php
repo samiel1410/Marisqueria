@@ -161,8 +161,7 @@ class OrderController extends BaseController
             $stmtItems->execute([$order['id']]);
             $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
         }
-
-        echo json_encode($orders);
+        $this->sendJson($orders);
     }
 
     public function getActiveOrders(): void
@@ -199,8 +198,7 @@ class OrderController extends BaseController
             $stmtItems->execute([$order['id']]);
             $order['items'] = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
         }
-
-        echo json_encode($orders);
+        $this->sendJson($orders);
     }
 
     public function getKitchenOrders(): void
@@ -330,11 +328,9 @@ class OrderController extends BaseController
 
     public function updateStatus(): void
     {
-        $storageDir = __DIR__ . '/../../../scratch';
-        if (!is_dir($storageDir))
-            mkdir($storageDir, 0777, true);
+        $storageDir = NotificationService::getStoragePath();
         $logFile = $storageDir . '/qz_debug.log';
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() called\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() called\n", FILE_APPEND);
 
         $user = AuthMiddleware::handle();
 
@@ -346,7 +342,7 @@ class OrderController extends BaseController
         }
 
         if (empty($data['order_id']) || empty($data['status'])) {
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() failed - missing order_id or status\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: updateStatus() failed - missing order_id or status\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'order_id and status are required']);
             return;
@@ -676,7 +672,7 @@ class OrderController extends BaseController
 
         $orderId = $data['order_id'] ?? null;
         if (!$orderId) {
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() failed - order_id missing\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: update() failed - order_id missing\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'order_id is required']);
             return;
@@ -750,7 +746,7 @@ class OrderController extends BaseController
             }
 
             $db->commit();
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order $orderId updated successfully in DB\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Order $orderId updated successfully in DB\n", FILE_APPEND);
 
             // Notificar a todos que hubo una actualización
             NotificationService::sendToTopic('new_orders', 'Pedido Actualizado', "El pedido #$orderId ha sido modificado.", [
@@ -841,23 +837,23 @@ class OrderController extends BaseController
         AuthMiddleware::handle();
         $orderId = $_GET['order_id'] ?? null;
         if (!$orderId) {
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint failed - order_id required\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: requestRemoteKitchenPrint failed - order_id required\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'order_id required']);
             return;
         }
 
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: adding job for order $orderId\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: adding job for order $orderId\n", FILE_APPEND);
         PrintQueueController::addJob('print_kitchen_request', [
             'order_id' => (string) $orderId
         ]);
 
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Sending FCM notification for kitchen print order $orderId\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: Sending FCM notification for kitchen print order $orderId\n", FILE_APPEND);
         $fcmResult = NotificationService::sendToTopic('new_orders', 'Imprimir Comanda', "Imprimiendo comanda de cocina...", [
             'order_id' => (string) $orderId,
             'type' => 'print_kitchen_request'
         ]);
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: FCM result: " . ($fcmResult ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: FCM result: " . ($fcmResult ? 'SUCCESS' : 'FAILED') . "\n", FILE_APPEND);
 
         echo json_encode(['message' => 'Kitchen print request sent']);
     }
@@ -1027,7 +1023,7 @@ class OrderController extends BaseController
             }
 
             $db->commit();
-            echo json_encode(['message' => 'Order cancelled successfully']);
+            $this->sendJson(['message' => 'Order cancelled successfully']);
         } catch (Exception $e) {
             if ($db->inTransaction())
                 $db->rollBack();

@@ -16,7 +16,7 @@ class NotificationController {
         $topic = $data['topic'] ?? 'new_orders';
 
         if (!$token) {
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: subscribe failed - no token provided\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: subscribe failed - no token provided\n", FILE_APPEND);
             http_response_code(400);
             echo json_encode(['error' => 'Token is required']);
             return;
@@ -33,14 +33,14 @@ class NotificationController {
             if (count($tokens) > 20) {
                 array_shift($tokens);
             }
-            file_put_contents($tokensFile, json_encode($tokens));
+            @file_put_contents($tokensFile, json_encode($tokens));
         }
 
-        file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: subscribing token " . substr($token, 0, 10) . "... to topic $topic\n", FILE_APPEND);
+        @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: subscribing token " . substr($token, 0, 10) . "... to topic $topic\n", FILE_APPEND);
         $success = NotificationService::subscribeToTopic($token, $topic);
 
         if ($success) {
-            file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: token successfully subscribed to $topic\n", FILE_APPEND);
+            @file_put_contents($logFile, date('Y-m-d H:i:s') . " BACKEND: token successfully subscribed to $topic\n", FILE_APPEND);
             echo json_encode(['message' => 'Subscribed successfully', 'status' => 'ok']);
         } else {
             // No devolvemos 500 para evitar errores críticos en el frontend si falla Firebase
