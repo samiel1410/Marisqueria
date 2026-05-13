@@ -90,6 +90,10 @@ class OrderController extends BaseController
                     $price += (float) ($product['takeaway_surcharge'] ?? 0);
                 }
                 $stmtItem->execute([$orderId, $item['product_id'], $item['quantity'], $price, $item['notes'] ?? null]);
+
+                // Descuento de stock automático (se permite stock negativo según requerimiento)
+                $db->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND manages_inventory = 1")
+                    ->execute([$item['quantity'], $item['product_id']]);
             }
 
             if ($data['table_id'] !== null) {
@@ -431,7 +435,7 @@ class OrderController extends BaseController
             }
 
             // If 'cancelado', revert stock
-            if ($data['status'] === 'cancelado' && in_array($currentStatus, ['en cocina', 'entregado'])) {
+            if ($data['status'] === 'cancelado' && in_array($currentStatus, ['pendiente', 'en cocina', 'entregado'])) {
                 $stmtItems = $db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
                 $stmtItems->execute([$data['order_id']]);
                 $items = $stmtItems->fetchAll();
@@ -444,6 +448,12 @@ class OrderController extends BaseController
             // Update status and payments
             $newStatus = $data['status'];
             if ($newStatus === 'cobrado') {
+                // Validación de Seguridad: Verificar que la caja siga abierta ANTES de procesar el pago
+                $stmtSession = $db->query("SELECT id FROM cash_sessions WHERE status = 'open' LIMIT 1 FOR UPDATE");
+                if (!$stmtSession->fetch()) {
+                    throw new Exception("No hay una sesión de caja abierta. Por favor, abra una caja para poder cobrar.");
+                }
+
                 $paymentMethod = $data['payment_method'] ?? 'efectivo';
                 $bankId = (!empty($data['bank_account_id']) && $data['bank_account_id'] !== 'null') ? $data['bank_account_id'] : null;
                 $cashAmount = (float) ($data['cash_amount'] ?? 0);
